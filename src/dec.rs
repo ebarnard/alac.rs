@@ -367,7 +367,6 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
 
         // special case: there may be compressed blocks of 0
         if (history < 128) && (i + 1 < num_samples) {
-            panic!("untested");
             // calculate rice param and decode block size
             let k = 7 - log_2(history) + ((history + 16) >> 6);
             let k = min(k as u8, rice_limit);
