@@ -408,64 +408,46 @@ fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
     }
 }
 
-fn lpc_predict(buf: &mut [i32],
-               bps: u8,
-               lpc_coefs: &mut [i16],
-               lpc_quant: u32) {
-
-    let num_samples = buf.len();
-    if num_samples == 0 {
-        return;
-    }
-
-    // This is triggered anyway but still...
+fn lpc_predict(buf: &mut [i32], bps: u8, lpc_coefs: &mut [i16], lpc_quant: u32) {
     let lpc_order = lpc_coefs.len();
-    if lpc_order == 0 {
-        return;
-    }
-
-    let mut i = 1;
 
     // Read warm-up samples
-    while i <= lpc_order && i < num_samples {
+    for i in 1..min(lpc_order + 1, buf.len()) {
         buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
-        i += 1;
     }
 
-    // TODO: Unroll?
-    while i < num_samples {
+    // TODO: Might be worth doing a couple of unrolled versions for order 4 and 8
+    for i in (lpc_order + 1)..buf.len() {
         let d = buf[i - lpc_order - 1];
         let pred_index = i - lpc_order;
-        let mut error_val = buf[i];
+        let prediction_error = buf[i];
 
+        // Do LPC prediction
         let mut val = 0;
-
-        // TODO: Coefs order matches the reference not ffmpeg. Check the maths for an obvious direction
-        // LPC prediction
         for j in 0..lpc_order {
             val += (buf[pred_index + j] - d) * (lpc_coefs[j] as i32);
         }
-
+        // 1 << (lpc_quant - 1) sets the lpc_quant'th bit
         val = (val + (1 << (lpc_quant - 1))) >> lpc_quant;
-        val += d + error_val;
+        val += d + prediction_error;
         buf[i] = sign_extend(val, bps);
 
-        // adapt LPC coefficients
-        let error_sign = error_val.signum();
-        if error_sign != 0 {
-            let mut j = 0;
-            while (j < lpc_order) && (error_val * error_sign > 0) {
+        // Adapt LPC coefficients
+        let mut prediction_error = prediction_error;
+        let prediction_error_sign = prediction_error.signum();
+        if prediction_error_sign != 0 {
+            for j in 0..lpc_order {
                 let val = d - buf[pred_index + j];
-                let sign = val.signum() * error_sign;
+                let sign = val.signum() * prediction_error_sign;
                 lpc_coefs[j] -= sign as i16;
                 let val = val * sign;
-                error_val -= (val >> lpc_quant) * (j as i32 + 1);
+                prediction_error -= (val >> lpc_quant) * (j as i32 + 1);
 
-                j += 1;
+                if prediction_error * prediction_error_sign <= 0 {
+                    break;
+                }
             }
         }
-
-        i += 1;
     }
 }
 
