@@ -469,24 +469,21 @@ fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
     }
 }
 
-fn append_extra_bits<'a>(shift_bits_reader: &mut BitCursor<'a>,
-                         mix_buf: &mut [&mut [i32]; 2],
-                         packet_channels: u8,
+fn append_extra_bits<'a>(reader: &mut BitCursor<'a>,
+                         buf: &mut [&mut [i32]; 2],
+                         channels: u8,
                          bytes_shifted: u8)
                          -> Result<(), ()> {
-    // We directly apply the shifts to avoid needing a buffer
+    debug_assert_eq!(buf[0].len(), buf[1].len());
 
-    debug_assert_eq!(mix_buf[0].len(), mix_buf[1].len());
-
-    let num_samples = min(mix_buf[0].len(), mix_buf[1].len());
-
+    let channels = min(channels as usize, buf.len());
+    let num_samples = min(buf[0].len(), buf[1].len());
     let shift = bytes_shifted as usize * 8;
 
     for i in 0..num_samples {
-        for j in 0..packet_channels as usize {
-            let extra_bits = try!(shift_bits_reader.read_u16(shift));
-
-            mix_buf[j][i] = (mix_buf[j][i] << shift) | extra_bits as i32;
+        for j in 0..channels {
+            let extra_bits = try!(reader.read_u16(shift)) as i32;
+            buf[j][i] = (buf[j][i] << shift) | extra_bits as i32;
         }
     }
 
