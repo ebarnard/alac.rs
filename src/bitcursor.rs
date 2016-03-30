@@ -96,7 +96,6 @@ impl<'a> BitCursor<'a> {
         if pos < self.buf.len() {
             Ok(())
         } else {
-            debug_assert!(false, "read over end of buffer");
             Err(())
         }
     }

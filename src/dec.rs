@@ -299,16 +299,34 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
     Ok(num_samples as u32)
 }
 
+#[inline]
 fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
-    // Count the numder of leading 1s up to a maximum of 9
-    let bits = try!(reader.peek_u16(9)) << 7;
-    let mut x = (!bits).leading_zeros();
-    // We want to skip the terminating bit as well if it exists
-    try!(reader.skip(min(x as usize + 1, 9)));
+    // There might be less than 9 bits left in the packet. Fallback to reading
+    // one bit at a time if that is the case.
+    let mut x = match reader.peek_u16(9) {
+        Ok(bits) => {
+            let bits = bits << 7;
+            let x = (!bits).leading_zeros();
+            // x + 1 as want to skip the terminating bit as well.
+            try!(reader.skip(min(x as usize + 1, 9)));
+            x
+        }
+        Err(_) => {
+            // There is no need to check for max length as we have already
+            // effectively done that above.
+            let mut x = 0;
+            while try!(reader.read_bit()) != false {
+                x += 1;
+            }
+            x
+        }
+    };
 
     if x > 8 {
-        x = try!(reader.read_u32(bps as usize));
-    } else if k != 1 {
+        return Ok(try!(reader.read_u32(bps as usize)));
+    }
+
+    if k != 1 {
         let extrabits = try!(reader.peek_u32(k as usize));
 
         // TODO: Investigate the differences between these
