@@ -451,33 +451,22 @@ fn lpc_predict(buf: &mut [i32], bps: u8, lpc_coefs: &mut [i16], lpc_quant: u32) 
     }
 }
 
-fn unmix_stereo(mix_buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
-    debug_assert_eq!(mix_buf[0].len(), mix_buf[1].len());
+fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
+    debug_assert_eq!(buf[0].len(), buf[1].len());
 
-    let num_samples = min(mix_buf[0].len(), mix_buf[1].len());
+    let mix_res = mix_res as i32;
+    let num_samples = min(buf[0].len(), buf[1].len());
 
     for i in 0..num_samples {
-        let u = mix_buf[0][i];
-        let v = mix_buf[1][i];
+        let u = buf[0][i];
+        let v = buf[1][i];
 
-        let l = u + v - ((mix_res as i32 * v) >> mix_bits as i32);
-        let r = l - v;
+        let r = u - ((v * mix_res) >> mix_bits);
+        let l = r + v;
 
-        mix_buf[0][i] = l;
-        mix_buf[1][i] = r;
+        buf[0][i] = l;
+        buf[1][i] = r;
     }
-
-    // 00234         int32_t a, b;
-    // 00235
-    // 00236         a = buffer[0][i];
-    // 00237         b = buffer[1][i];
-    // 00238
-    // 00239         a -= (b * decorr_left_weight) >> decorr_shift;
-    // 00240         b += a;
-    // 00241
-    // 00242         buffer[0][i] = b;
-    // 00243         buffer[1][i] = a;
-    //
 }
 
 fn append_extra_bits<'a>(shift_bits_reader: &mut BitCursor<'a>,
