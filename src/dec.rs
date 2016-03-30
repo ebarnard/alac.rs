@@ -217,8 +217,9 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
             pb_factor[i] = try!(reader.read_u8(3)) as u16;
             lpc_order[i] = try!(reader.read_u8(5));
 
-            for j in 0..lpc_order[i] {
-                lpc_coefs[i][j as usize] = try!(reader.read_u16(16)) as i16;
+            // Coefficients are used in reverse order of storage for prediction
+            for j in (0..lpc_order[i] as usize).rev() {
+                lpc_coefs[i][j] = try!(reader.read_u16(16)) as i16;
             }
         }
 
@@ -442,7 +443,7 @@ fn lpc_predict(buf: &mut [i32],
         // TODO: Coefs order matches the reference not ffmpeg. Check the maths for an obvious direction
         // LPC prediction
         for j in 0..lpc_order {
-            val += (buf[pred_index + j] - d) * (lpc_coefs[lpc_order - j - 1] as i32);
+            val += (buf[pred_index + j] - d) * (lpc_coefs[j] as i32);
         }
 
         val = (val + (1 << (lpc_quant - 1))) >> lpc_quant;
@@ -456,7 +457,7 @@ fn lpc_predict(buf: &mut [i32],
             while (j < lpc_order) && (error_val * error_sign > 0) {
                 let val = d - buf[pred_index + j];
                 let sign = val.signum() * error_sign;
-                lpc_coefs[lpc_order - j - 1] -= sign as i16;
+                lpc_coefs[j] -= sign as i16;
                 let val = val * sign;
                 error_val -= (val >> lpc_quant) * (j as i32 + 1);
 
