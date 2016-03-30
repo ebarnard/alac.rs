@@ -245,17 +245,11 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
                 return Err(());
             }
 
-            unsafe {
-                // We have a seperate function for this
-                assert!(lpc_order[i] != 31);
+            // We have a seperate function for this
+            assert!(lpc_order[i] != 31);
 
-                let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
-                lpc_predict(lpc_error_buf,
-                            mix_buf[i],
-                            chan_bits,
-                            lpc_coefs,
-                            lpc_quant[i]);
-            }
+            let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
+            lpc_predict(lpc_error_buf, mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i]);
         }
 
         if packet_channels == 2 && mix_res != 0 {
