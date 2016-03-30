@@ -73,7 +73,7 @@ impl Decoder {
         let mut reader = BitCursor::new(packet);
 
         let mut channel_index = 0;
-        let num_samples: u32 = self.config.frame_length;
+        let mut num_samples: u32 = self.config.frame_length;
 
         assert!(out.len() >= self.config.frame_length as usize * self.config.num_channels as usize);
         assert!(S::bits() >= self.config.bit_depth);
@@ -95,7 +95,7 @@ impl Decoder {
                         return Err(()); // TOO MANY CHANNELS
                     }
 
-                    try!(decode_audio_element(self,
+                    num_samples = try!(decode_audio_element(self,
                                               &mut reader,
                                               out,
                                               channel_index,
@@ -163,7 +163,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
                                        out: &mut [S],
                                        channel_index: u8,
                                        packet_channels: u8)
-                                       -> Result<(), ()> {
+                                       -> Result<u32, ()> {
     // Unused
     let _element_instance_tag = try!(reader.read_u8(4));
 
@@ -297,7 +297,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         }
     }
 
-    Ok(())
+    Ok(num_samples as u32)
 }
 
 fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
