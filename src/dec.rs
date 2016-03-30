@@ -288,7 +288,6 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         for i in 0..num_samples {
             for j in 0..packet_channels as usize {
                 let sample = try!(reader.read_u32(this.config.bit_depth as usize)) as i32;
-                let sample = sign_extend(sample, this.config.bit_depth);
 
                 let idx = i * this.config.num_channels as usize + channel_index as usize + j;
 
