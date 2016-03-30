@@ -38,7 +38,6 @@ pub struct Decoder {
     config: AlacConfig,
     mix_buf_u: Vec<i32>,
     mix_buf_v: Vec<i32>,
-    lpc_error_buf: Vec<i32>,
 }
 
 const ID_SCE: u8 = 0; // Single Channel Element
@@ -58,7 +57,6 @@ impl Decoder {
             config: config,
             mix_buf_u: new_buf(),
             mix_buf_v: new_buf(),
-            lpc_error_buf: new_buf(),
         }
     }
 
@@ -200,8 +198,6 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // TODO: Treat as contiguous buffer?
         let mut mix_buf = [&mut this.mix_buf_u[..num_samples], &mut this.mix_buf_v[..num_samples]];
 
-        let mut lpc_error_buf = &mut this.lpc_error_buf[..num_samples];
-
         let shift = bytes_shifted * 8;
         let chan_bits = this.config.bit_depth - shift + packet_channels - 1;
 
@@ -235,12 +231,15 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
             None
         };
 
+        // TODO: Tidy and comment these steps see below for an example
+        // https://github.com/ruud-v-a/claxon/blob/master/src/subframe.rs
+        // It should be possible to it without allocating buffers quite easily
         for i in 0..(packet_channels as usize) {
-            try!(rice_decompress(reader, &this.config, lpc_error_buf, chan_bits, pb_factor[i]));
+            try!(rice_decompress(reader, &this.config, &mut mix_buf[i], chan_bits, pb_factor[i]));
 
             if lpc_mode[i as usize] == 15 {
                 // the special "numActive == 31" mode can be done in-place
-                lpc_predict_order_31(lpc_error_buf, chan_bits);
+                lpc_predict_order_31(mix_buf[i], chan_bits);
             } else if lpc_mode[i as usize] > 0 {
                 return Err(());
             }
@@ -249,7 +248,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
             assert!(lpc_order[i] != 31);
 
             let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
-            lpc_predict(lpc_error_buf, mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i]);
+            lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i]);
         }
 
         if packet_channels == 2 && mix_res != 0 {
@@ -329,7 +328,7 @@ fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
 
 fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
                        config: &AlacConfig,
-                       lpc_error_buf: &mut [i32],
+                       buf: &mut [i32],
                        chan_bits: u8,
                        pb_factor: u16)
                        -> Result<(), ()> {
@@ -343,7 +342,7 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
     let bps = chan_bits;
     let mut sign_modifier = 0;
     let rice_history_mult = (config.pb as u32 * pb_factor as u32) / 4; //pb
-    let num_samples = lpc_error_buf.len();
+    let num_samples = buf.len();
     let wb_local = (1 << rice_limit) - 1;
 
     let mut i = 0;
@@ -355,7 +354,7 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
         let x = try!(decode_rice_scalar(reader, m, k, bps));
         let x = x + sign_modifier;
         sign_modifier = 0;
-        lpc_error_buf[i] = ((x >> 1) as i32) ^ -((x & 1) as i32);
+        buf[i] = ((x >> 1) as i32) ^ -((x & 1) as i32);
 
         // update the history
         if x > 0xffff {
@@ -381,7 +380,7 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
                 }
                 // TODO: memset
                 for j in i + 1..i + 1 + block_size {
-                    lpc_error_buf[j] = 0;
+                    buf[j] = 0;
                 }
                 i += block_size;
             }
@@ -402,64 +401,60 @@ fn sign_extend(val: i32, bits: u8) -> i32 {
     (val << shift) >> shift
 }
 
-fn lpc_predict_order_31(lpc_error_buf: &mut [i32], bps: u8) {
-    for i in 1..lpc_error_buf.len() {
-        lpc_error_buf[i] = sign_extend(lpc_error_buf[i] + lpc_error_buf[i - 1], bps);
+fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
+    for i in 1..buf.len() {
+        buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
     }
 }
 
-fn lpc_predict(lpc_error_buf: &[i32],
-               mix_buf: &mut [i32],
+fn lpc_predict(buf: &mut [i32],
                bps: u8,
                lpc_coefs: &mut [i16],
                lpc_quant: u32) {
-    debug_assert_eq!(lpc_error_buf.len(), mix_buf.len());
 
-    let num_samples = min(lpc_error_buf.len(), mix_buf.len());
+    let num_samples = buf.len();
     if num_samples == 0 {
         return;
     }
 
+    // This is triggered anyway but still...
     let lpc_order = lpc_coefs.len();
     if lpc_order == 0 {
-        for i in 0..num_samples {
-            mix_buf[i] = lpc_error_buf[i];
-        }
+        return;
     }
 
     let mut i = 1;
 
     // Read warm-up samples
-    mix_buf[0] = lpc_error_buf[0];
     while i <= lpc_order && i < num_samples {
-        mix_buf[i] = sign_extend(lpc_error_buf[i] + mix_buf[i - 1], bps);
+        buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
         i += 1;
     }
 
     // TODO: Unroll?
     while i < num_samples {
-        let d = mix_buf[i - lpc_order - 1];
+        let d = buf[i - lpc_order - 1];
         let pred_index = i - lpc_order;
-        let mut error_val = lpc_error_buf[i];
+        let mut error_val = buf[i];
 
         let mut val = 0;
 
         // TODO: Coefs order matches the reference not ffmpeg. Check the maths for an obvious direction
         // LPC prediction
         for j in 0..lpc_order {
-            val += (mix_buf[pred_index + j] - d) * (lpc_coefs[lpc_order - j - 1] as i32);
+            val += (buf[pred_index + j] - d) * (lpc_coefs[lpc_order - j - 1] as i32);
         }
 
         val = (val + (1 << (lpc_quant - 1))) >> lpc_quant;
         val += d + error_val;
-        mix_buf[i] = sign_extend(val, bps);
+        buf[i] = sign_extend(val, bps);
 
         // adapt LPC coefficients
         let error_sign = error_val.signum();
         if error_sign != 0 {
             let mut j = 0;
             while (j < lpc_order) && (error_val * error_sign > 0) {
-                let val = d - mix_buf[pred_index + j];
+                let val = d - buf[pred_index + j];
                 let sign = val.signum() * error_sign;
                 lpc_coefs[lpc_order - j - 1] -= sign as i16;
                 let val = val * sign;
