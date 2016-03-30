@@ -6,11 +6,9 @@ extern crate alac;
 fn main() {
 	let cookie_bytes = include_bytes!("data/magic_cookie.bin");
 
-	let cookie = alac::AlacConfig::from_cookie(cookie_bytes).unwrap();
-
 	let packet = include_bytes!("data/packet_16_bit.bin");
 
-	let mut dec = alac::Decoder::new(cookie);
+	let mut dec = alac::Decoder::from_cookie(cookie_bytes).unwrap();
 
 	let mut out = vec![0i16; 8192];
 

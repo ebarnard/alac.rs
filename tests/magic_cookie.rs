@@ -4,9 +4,9 @@ extern crate alac;
 fn main() {
 	let cookie_bytes = include_bytes!("data/magic_cookie.bin");
 
-	let cookie = alac::AlacConfig::from_cookie(cookie_bytes).unwrap();
+	let cookie = alac::DecoderConfig::from_cookie(cookie_bytes).unwrap();
 
-	let comparison = alac::AlacConfig {
+	let comparison = alac::DecoderConfig {
 		frame_length: 4096,
 		compatible_version: 0,
 	 	bit_depth: 16,

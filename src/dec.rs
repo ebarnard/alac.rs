@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use AlacConfig;
+use DecoderConfig;
 use bitcursor::BitCursor;
 
 pub trait Sample {
@@ -35,7 +35,7 @@ impl Sample for i32 {
 }
 
 pub struct Decoder {
-    config: AlacConfig,
+    config: DecoderConfig,
     buf: Box<[i32]>,
 }
 
@@ -49,14 +49,19 @@ const ID_FIL: u8 = 6; // filler element
 const ID_END: u8 = 7; // frame end
 
 impl Decoder {
-    pub fn new(config: AlacConfig) -> Decoder {
+    pub fn new(config: DecoderConfig) -> Decoder {
         Decoder {
             config: config,
             buf: vec![0; config.frame_length as usize * 2].into_boxed_slice(),
         }
     }
 
-    pub fn config(&self) -> &AlacConfig {
+    pub fn from_cookie(cookie: &[u8]) -> Result<Decoder, ()> {
+        let config = try!(DecoderConfig::from_cookie(cookie));
+        Ok(Decoder::new(config))
+    }
+
+    pub fn config(&self) -> &DecoderConfig {
         &self.config
     }
 
@@ -361,7 +366,7 @@ fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
 }
 
 fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
-                       config: &AlacConfig,
+                       config: &DecoderConfig,
                        buf: &mut [i32],
                        bps: u8,
                        pb_factor: u16)

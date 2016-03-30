@@ -6,7 +6,7 @@ mod dec;
 pub use dec::{Decoder, Sample};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct AlacConfig {
+pub struct DecoderConfig {
     pub frame_length: u32,
     pub compatible_version: u8,
     pub bit_depth: u8,
@@ -20,8 +20,8 @@ pub struct AlacConfig {
     pub sample_rate: u32,
 }
 
-impl AlacConfig {
-    pub fn from_cookie(mut cookie: &[u8]) -> Result<AlacConfig, ()> {
+impl DecoderConfig {
+    pub fn from_cookie(mut cookie: &[u8]) -> Result<DecoderConfig, ()> {
         use byteorder::{BigEndian, ReadBytesExt};
         use std::io::Cursor;
 
@@ -54,7 +54,7 @@ impl AlacConfig {
         let mut reader = Cursor::new(cookie);
 
         // These reads are guarenteed to succeed
-        Ok(AlacConfig {
+        Ok(DecoderConfig {
             frame_length: reader.read_u32::<BigEndian>().unwrap(),
             compatible_version: reader.read_u8().unwrap(),
             bit_depth: reader.read_u8().unwrap(),
