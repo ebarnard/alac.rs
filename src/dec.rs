@@ -94,10 +94,10 @@ impl Decoder {
                     }
 
                     num_samples = try!(decode_audio_element(self,
-                                              &mut reader,
-                                              out,
-                                              channel_index,
-                                              packet_channels));
+                                                            &mut reader,
+                                                            out,
+                                                            channel_index,
+                                                            packet_channels));
 
                     channel_index += packet_channels;
                 }
@@ -119,7 +119,8 @@ impl Decoder {
                         skip_bytes += try!(reader.read_u8(8)) as usize;
                     }
 
-                    // the align flag means the bitstream should be byte-aligned before reading the following data bytes
+                    // the align flag means the bitstream should be byte-aligned before reading the
+                    // following data bytes
                     if data_byte_align_flag {
                         try!(reader.skip_to_byte());
                     }
@@ -240,7 +241,11 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // https://github.com/ruud-v-a/claxon/blob/master/src/subframe.rs
         // It should be possible to it without allocating buffers quite easily
         for i in 0..(packet_channels as usize) {
-            try!(rice_decompress(reader, &this.config, &mut mix_buf[i], chan_bits, pb_factor[i]));
+            try!(rice_decompress(reader,
+                                 &this.config,
+                                 &mut mix_buf[i],
+                                 chan_bits,
+                                 pb_factor[i]));
 
             if lpc_mode[i as usize] == 15 {
                 // the special "numActive == 31" mode can be done in-place
