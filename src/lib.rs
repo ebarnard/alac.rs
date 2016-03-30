@@ -37,12 +37,12 @@ impl AlacConfig {
         };
 
         // skip format ('frma') atom if present
-        if &cookie[0..4] == b"frma" {
+        if &cookie[4..8] == b"frma" {
             cookie = &cookie[12..];
         }
 
         // skip 'alac' atom header if present
-        if &cookie[0..4] == b"alac" {
+        if &cookie[4..8] == b"alac" {
             cookie = &cookie[12..];
         }
 
