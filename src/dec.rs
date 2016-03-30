@@ -200,6 +200,10 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
 
         let shift = bytes_shifted * 8;
         let chan_bits = this.config.bit_depth - shift + packet_channels - 1;
+        if chan_bits > 32 {
+            // unimplemented - could in theory be 33
+            return Err(());
+        }
 
         // compressed frame, read rest of parameters
         let mix_bits: u8 = try!(reader.read_u8(8));
