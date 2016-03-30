@@ -53,8 +53,6 @@ impl AlacConfig {
 
         let mut reader = Cursor::new(cookie);
 
-        // TODO: other clients don't do the big endian bit swap, or do they...?
-
         // These reads are guarenteed to succeed
         Ok(AlacConfig {
             frame_length: reader.read_u32::<BigEndian>().unwrap(),
