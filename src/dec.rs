@@ -347,65 +347,81 @@ fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
 fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
                        config: &AlacConfig,
                        buf: &mut [i32],
-                       chan_bits: u8,
+                       bps: u8,
                        pb_factor: u16)
                        -> Result<(), ()> {
-
+    #[inline(always)]
     fn log_2(x: u32) -> u32 {
         31 - (x | 1).leading_zeros()
     }
 
-    let mut history: u32 = config.mb as u32;
+    let mut rice_history: u32 = config.mb as u32;
+    let rice_history_mult = (config.pb as u32 * pb_factor as u32) / 4;
     let rice_limit = config.kb;
-    let bps = chan_bits;
     let mut sign_modifier = 0;
-    let rice_history_mult = (config.pb as u32 * pb_factor as u32) / 4; //pb
     let num_samples = buf.len();
-    let wb_local = (1 << rice_limit) - 1;
 
     let mut i = 0;
     while i < num_samples {
-        let k = log_2((history >> 9) + 3);
+        let k = log_2((rice_history >> 9) + 3);
         let k = min(k as u8, rice_limit);
+        // See below for info on the m thing
         let m = (1 << k) - 1;
-        // TODO: check about the m thing
-        let x = try!(decode_rice_scalar(reader, m, k, bps));
-        let x = x + sign_modifier;
+        let val = try!(decode_rice_scalar(reader, m, k, bps));
+        let val = val + sign_modifier;
         sign_modifier = 0;
-        buf[i] = ((x >> 1) as i32) ^ -((x & 1) as i32);
+        buf[i] = ((val >> 1) as i32) ^ -((val & 1) as i32);
 
-        // update the history
-        if x > 0xffff {
-            history = 0xffff;
+        // Update the history value
+        if val > 0xffff {
+            rice_history = 0xffff;
         } else {
-            // Avoid assignment add do we don't underflow
-            history = (history + x * rice_history_mult) - ((history * rice_history_mult) >> 9);
+            // Avoid += as that has a tendency to underflow
+            rice_history = (rice_history + val * rice_history_mult) -
+                           ((rice_history * rice_history_mult) >> 9);
         }
 
-        // special case: there may be compressed blocks of 0
-        if (history < 128) && (i + 1 < num_samples) {
+        // There may be a compressed block of zeros. See if there is.
+        if (rice_history < 128) && (i + 1 < num_samples) {
             // calculate rice param and decode block size
-            let k = 7 - log_2(history) + ((history + 16) >> 6);
-            let k = min(k as u8, rice_limit);
-            let mz = ((1 << k) - 1) & wb_local;
-            let block_size = try!(decode_rice_scalar(reader, mz, k, 16)) as usize;
+            let k = 7 - log_2(rice_history) + ((rice_history + 16) >> 6);
+            // The maximum value k above can take is 7. The rice limit seems to always be higher
+            // than this. This is called infrequently enough that the if statement below should
+            // have a minimal effect on performance.
+            if k as u8 > rice_limit {
+                debug_assert!(false,
+                              "k ({}) greater than rice limit ({}). Unsure how to continue.",
+                              k,
+                              rice_limit);
+            }
 
-            if block_size > 0 {
-                if block_size >= num_samples - i {
-                    panic!("");
+            // Apple version
+            let k = k as u8;
+            let wb_local = (1 << rice_limit) - 1;
+            let mz = ((1 << k) - 1) & wb_local;
+            // FFMPEG version
+            // let k = min(k as u8, rice_limit);
+            // let mz = ((1 << k) - 1);
+            // End versions
+
+            let zero_block_len = try!(decode_rice_scalar(reader, mz, k, 16)) as usize;
+
+            if zero_block_len > 0 {
+                if zero_block_len >= num_samples - i {
+                    // FFMPEG continues here but Apple does not. Let's be conservative.
                     return Err(());
-                    // FFMPEG continues here but the reference decoder does not
                 }
-                // TODO: memset
-                for j in i + 1..i + 1 + block_size {
+                // TODO: Use memset equivalent here.
+                let buf = &mut buf[i + 1..];
+                for j in 0..zero_block_len {
                     buf[j] = 0;
                 }
-                i += block_size;
+                i += zero_block_len;
             }
-            if block_size <= 0xffff {
+            if zero_block_len <= 0xffff {
                 sign_modifier = 1;
             }
-            history = 0;
+            rice_history = 0;
         }
 
         i += 1;
