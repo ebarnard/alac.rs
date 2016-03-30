@@ -14,7 +14,7 @@ fn main() {
 
 	let mut out = vec![0i16; 8192];
 
-	dec.decode_packet(packet, &mut out).unwrap();
+	dec.decode_packet(&packet[..8581], &mut out).unwrap();
 
 	let out_comp_bin = include_bytes!("data/out_16_bit.bin");
 
