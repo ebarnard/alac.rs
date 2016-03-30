@@ -71,7 +71,7 @@ impl Decoder {
         let mut reader = BitCursor::new(packet);
 
         let mut channel_index = 0;
-        let mut num_samples: u32 = self.config.frame_length;
+        let mut frame_samples = None;
 
         assert!(out.len() >= self.config.frame_length as usize * self.config.num_channels as usize);
         assert!(S::bits() >= self.config.bit_depth);
@@ -81,28 +81,37 @@ impl Decoder {
 
             match tag {
                 tag @ ID_SCE | tag @ ID_LFE | tag @ ID_CPE => {
-                    let packet_channels = match tag {
+                    let element_channels = match tag {
                         ID_SCE => 1,
                         ID_LFE => 1,
                         ID_CPE => 2,
                         _ => unreachable!(),
                     };
 
-                    if channel_index + packet_channels > self.config.num_channels {
-                        debug_assert!(false, "Too many channels");
-                        return Err(()); // TOO MANY CHANNELS
+                    // Check that there aren't too many channels in this packet.
+                    if channel_index + element_channels > self.config.num_channels {
+                        return Err(());
                     }
 
-                    num_samples = try!(decode_audio_element(self,
+                    let element_samples = try!(decode_audio_element(self,
                                                             &mut reader,
                                                             out,
                                                             channel_index,
-                                                            packet_channels));
+                                                            element_channels));
 
-                    channel_index += packet_channels;
+                    // Check that the number of samples are consistent within elements of a frame.
+                    if let Some(frame_samples) = frame_samples {
+                        if frame_samples != element_samples {
+                            return Err(())
+                        }
+                    } else {
+                        frame_samples = Some(element_samples);
+                    }
+
+                    channel_index += element_channels;
                 }
                 ID_CCE | ID_PCE => {
-                    // unsupported element, bail
+                    // These elements are unsupported
                     return Err(());
                 }
                 ID_DSE => {
@@ -140,18 +149,21 @@ impl Decoder {
                     try!(reader.skip(skip_bytes * 8));
                 }
                 ID_END => {
-                    // frame end, all done so byte align the frame and check for overruns
+                    // We've finished decoding the frame. Skip to the end of this byte. There may
+                    // be data left in the packet.
+                    // TODO: Should we throw an error about leftover data.
                     try!(reader.skip_to_byte());
 
-                    // TODO: Check no leftover buffer data (in debug only)
-
+                    // Check that there were as many channels in the packet as there ought to be.
                     if channel_index != self.config.num_channels {
-                        panic!("not enough channels");
+                        return Err(())
                     }
 
-                    return Ok((&out[..num_samples as usize * self.config.num_channels as usize]));
+                    let frame_samples = frame_samples.unwrap_or(self.config.frame_length);
+                    return Ok((&out[..frame_samples as usize * channel_index as usize]));
                 }
-                _ => unreachable!(), // 3 bit tag with all 8 options exhausted
+                // `tag` is 3 bits long and we've exhaused all 8 options.
+                _ => unreachable!(),
             }
         }
     }
