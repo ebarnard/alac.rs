@@ -90,15 +90,15 @@ impl Decoder {
                     }
 
                     let element_samples = try!(decode_audio_element(self,
-                                                            &mut reader,
-                                                            out,
-                                                            channel_index,
-                                                            element_channels));
+                                                                    &mut reader,
+                                                                    out,
+                                                                    channel_index,
+                                                                    element_channels));
 
                     // Check that the number of samples are consistent within elements of a frame.
                     if let Some(frame_samples) = frame_samples {
                         if frame_samples != element_samples {
-                            return Err(())
+                            return Err(());
                         }
                     } else {
                         frame_samples = Some(element_samples);
@@ -152,7 +152,7 @@ impl Decoder {
 
                     // Check that there were as many channels in the packet as there ought to be.
                     if channel_index != self.config.num_channels {
-                        return Err(())
+                        return Err(());
                     }
 
                     let frame_samples = frame_samples.unwrap_or(self.config.frame_length);
@@ -169,7 +169,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
                                        reader: &mut BitCursor<'a>,
                                        out: &mut [S],
                                        channel_index: u8,
-                                       packet_channels: u8)
+                                       element_channels: u8)
                                        -> Result<u32, ()> {
     // Unused
     let _element_instance_tag = try!(reader.read_u8(4));
@@ -182,10 +182,11 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
     // read the 1-bit "partial frame" flag, 2-bit "shift-off" flag & 1-bit "escape" flag
     let partial_frame = try!(reader.read_bit());
 
-    let bytes_shifted = try!(reader.read_u8(2));
-    if bytes_shifted >= 3 {
+    let sample_shift_bytes = try!(reader.read_u8(2));
+    if sample_shift_bytes >= 3 {
         return Err(()); // must be 1 or 2
     }
+    let sample_shift = sample_shift_bytes * 8;
 
     let is_uncompressed = try!(reader.read_bit());
 
@@ -207,8 +208,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         let (buf_u, buf_v) = this.buf.split_at_mut(this.config.frame_length as usize);
         let mut mix_buf = [&mut buf_u[..num_samples], &mut buf_v[..num_samples]];
 
-        let shift = bytes_shifted * 8;
-        let chan_bits = this.config.bit_depth - shift + packet_channels - 1;
+        let chan_bits = this.config.bit_depth - sample_shift + element_channels - 1;
         if chan_bits > 32 {
             // unimplemented - could in theory be 33
             return Err(());
@@ -224,7 +224,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         let mut lpc_order = [0; 2]; //u8
         let mut lpc_coefs = [[0; 32]; 2]; //i16*
 
-        for i in 0..(packet_channels as usize) {
+        for i in 0..(element_channels as usize) {
             lpc_mode[i] = try!(reader.read_u8(4));
             lpc_quant[i] = try!(reader.read_u8(4)) as u32;
             pb_factor[i] = try!(reader.read_u8(3)) as u16;
@@ -236,10 +236,9 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
             }
         }
 
-        let extra_bits_reader = if bytes_shifted != 0 {
+        let extra_bits_reader = if sample_shift != 0 {
             let extra_bits_reader = reader.clone();
-            try!(reader.skip((bytes_shifted as usize * 8) * num_samples *
-                             packet_channels as usize));
+            try!(reader.skip((sample_shift as usize) * num_samples * element_channels as usize));
             Some(extra_bits_reader)
         } else {
             None
@@ -248,7 +247,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // TODO: Tidy and comment these steps see below for an example
         // https://github.com/ruud-v-a/claxon/blob/master/src/subframe.rs
         // It should be possible to it without allocating buffers quite easily
-        for i in 0..(packet_channels as usize) {
+        for i in 0..(element_channels as usize) {
             try!(rice_decompress(reader,
                                  &this.config,
                                  &mut mix_buf[i],
@@ -269,7 +268,7 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
             lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i]);
         }
 
-        if packet_channels == 2 && mix_res != 0 {
+        if element_channels == 2 && mix_res != 0 {
             unmix_stereo(&mut mix_buf, mix_bits, mix_res);
         }
 
@@ -278,12 +277,12 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         if let Some(mut extra_bits_reader) = extra_bits_reader {
             try!(append_extra_bits(&mut extra_bits_reader,
                                    &mut mix_buf,
-                                   packet_channels,
-                                   bytes_shifted));
+                                   element_channels,
+                                   sample_shift));
         }
 
         for i in 0..num_samples {
-            for j in 0..packet_channels as usize {
+            for j in 0..element_channels as usize {
                 let sample = mix_buf[j][i];
 
                 let idx = i * this.config.num_channels as usize + channel_index as usize + j;
@@ -298,12 +297,12 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // Here we deviate here from the reference implementation and just copy
         // straight to the output buffer.
 
-        if bytes_shifted != 0 {
+        if sample_shift != 0 {
             return Err(());
         }
 
         for i in 0..num_samples {
-            for j in 0..packet_channels as usize {
+            for j in 0..element_channels as usize {
                 let sample = try!(reader.read_u32(this.config.bit_depth as usize)) as i32;
 
                 let idx = i * this.config.num_channels as usize + channel_index as usize + j;
@@ -522,18 +521,18 @@ fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
 fn append_extra_bits<'a>(reader: &mut BitCursor<'a>,
                          buf: &mut [&mut [i32]; 2],
                          channels: u8,
-                         bytes_shifted: u8)
+                         sample_shift: u8)
                          -> Result<(), ()> {
     debug_assert_eq!(buf[0].len(), buf[1].len());
 
     let channels = min(channels as usize, buf.len());
     let num_samples = min(buf[0].len(), buf[1].len());
-    let shift = bytes_shifted as usize * 8;
+    let sample_shift = sample_shift as usize;
 
     for i in 0..num_samples {
         for j in 0..channels {
-            let extra_bits = try!(reader.read_u16(shift)) as i32;
-            buf[j][i] = (buf[j][i] << shift) | extra_bits as i32;
+            let extra_bits = try!(reader.read_u16(sample_shift)) as i32;
+            buf[j][i] = (buf[j][i] << sample_shift) | extra_bits as i32;
         }
     }
 
