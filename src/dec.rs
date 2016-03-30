@@ -36,8 +36,7 @@ impl Sample for i32 {
 
 pub struct Decoder {
     config: AlacConfig,
-    mix_buf_u: Vec<i32>,
-    mix_buf_v: Vec<i32>,
+    buf: Box<[i32]>,
 }
 
 const ID_SCE: u8 = 0; // Single Channel Element
@@ -51,12 +50,9 @@ const ID_END: u8 = 7; // frame end
 
 impl Decoder {
     pub fn new(config: AlacConfig) -> Decoder {
-        let new_buf = || vec![0; config.frame_length as usize];
-
         Decoder {
             config: config,
-            mix_buf_u: new_buf(),
-            mix_buf_v: new_buf(),
+            buf: vec![0; config.frame_length as usize * 2].into_boxed_slice(),
         }
     }
 
@@ -208,8 +204,8 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
     };
 
     if !is_uncompressed {
-        // TODO: Treat as contiguous buffer?
-        let mut mix_buf = [&mut this.mix_buf_u[..num_samples], &mut this.mix_buf_v[..num_samples]];
+        let (buf_u, buf_v) = this.buf.split_at_mut(this.config.frame_length as usize);
+        let mut mix_buf = [&mut buf_u[..num_samples], &mut buf_v[..num_samples]];
 
         let shift = bytes_shifted * 8;
         let chan_bits = this.config.bit_depth - shift + packet_channels - 1;
