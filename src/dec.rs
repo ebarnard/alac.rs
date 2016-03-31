@@ -321,48 +321,71 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
 }
 
 #[inline]
-fn decode_rice_scalar<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
-    // There might be less than 9 bits left in the packet. Fallback to reading
-    // one bit at a time if that is the case.
-    let mut x = match reader.peek_u16(9) {
+fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
+    // Rice coding encodes a symbol S as the product of a quotient Q and a
+    // modulus M added to a remainder R. Q is encoded in unary (Q 1s followed)
+    // by a 0 and R in binary in K bits.
+    //
+    // S = Q × M + R where M = 2^K
+
+    let k = k as usize;
+
+    // First we need to try to read Q which is encoded in unary and is at most
+    // 9. If it is greater than 8 the entire symbol is simply encoded in binary
+    // after Q.
+    //
+    // As there might be less than 9 bits left in the packet we fall back to
+    // reading one bit at a time if there is an error reading all 9 bits.
+    let q = match reader.peek_u16(9) {
         Ok(bits) => {
             let bits = bits << 7;
-            let x = (!bits).leading_zeros();
-            // x + 1 as want to skip the terminating bit as well.
-            try!(reader.skip(min(x as usize + 1, 9)));
-            x
+            let q = (!bits).leading_zeros();
+            // We skip q + 1 as we need to skip the terminating bit if it exists.
+            try!(reader.skip(min(q as usize + 1, 9)));
+            q
         }
         Err(_) => {
-            // There is no need to check for max length as we have already
-            // effectively done that above.
-            let mut x = 0;
+            // Here there is no need to check for the maimum length of 9 as we
+            // have effectively already done that above.
+            let mut q = 0;
             while try!(reader.read_bit()) != false {
-                x += 1;
+                q += 1;
             }
-            x
+            q
         }
     };
 
-    if x > 8 {
+    if q > 8 {
         return Ok(try!(reader.read_u32(bps as usize)));
     }
 
-    if k != 1 {
-        let extrabits = try!(reader.peek_u32(k as usize));
-
-        // TODO: Investigate the differences between these
-        // x = (x << k) - x;
-        x *= m;
-
-        if extrabits > 1 {
-            x += extrabits - 1;
-            try!(reader.skip(k as usize));
-        } else {
-            try!(reader.skip(k as usize - 1));
-        }
+    // A modulus of 2^K - 1 is used instead of 2^K. Therefore if K = 1 then
+    // M = 1 and there is no remainder (K cannot equal 0 - log cannot be 0).
+    // This is presumably an optimisation that aims to store small numbers more
+    // efficiently.
+    if k == 1 {
+        return Ok(q);
     }
 
-    Ok(x)
+    // Due to the issue mentioned in rice_decompress we use a parameter for m
+    // rather than calculating it here (e.g. let mut s = (q << k) - q);
+    let mut s = q * m;
+
+    // Next we read the remainder which is at most K bits. The remainder is
+    // stored as R + 1 though the value can take 0 as well as 1. If either of
+    // these are the case we claim to have only read K - 1 bits. This is
+    // probably an optimisation as the value of the lowest bit then corresponds
+    // to Q values of 0 or 1 saving a bit in those cases. I'm not sure why this
+    // would be an optimisation though.
+    let r = try!(reader.peek_u32(k));
+    if r > 1 {
+        s += r - 1;
+        try!(reader.skip(k));
+    } else {
+        try!(reader.skip(k - 1));
+    }
+
+    Ok(s)
 }
 
 fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
@@ -378,19 +401,25 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
 
     let mut rice_history: u32 = config.mb as u32;
     let rice_history_mult = (config.pb as u32 * pb_factor as u32) / 4;
-    let rice_limit = config.kb;
+    let k_max = config.kb;
     let mut sign_modifier = 0;
-    let num_samples = buf.len();
 
     let mut i = 0;
-    while i < num_samples {
+    while i < buf.len() {
         let k = log_2((rice_history >> 9) + 3);
-        let k = min(k as u8, rice_limit);
+        let k = min(k as u8, k_max);
         // See below for info on the m thing
         let m = (1 << k) - 1;
-        let val = try!(decode_rice_scalar(reader, m, k, bps));
+        let val = try!(decode_rice_symbol(reader, m, k, bps));
+        // The least significant bit of val is the sign bit - the plus is weird tho
+        // if val and sgn mod = 0 then nothing happens
+        // if one is 1 the lsb = 1
+        // val & 1 = 1 => val is all 1s => flip all the bits
+        // if they are both 1 then val_eff += 2
+        // val & 1 = 0 => nothing happens...?
         let val = val + sign_modifier;
         sign_modifier = 0;
+        // As lsb sign bit right shift by 1
         buf[i] = ((val >> 1) as i32) ^ -((val & 1) as i32);
 
         // Update the history value
@@ -403,33 +432,33 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
         }
 
         // There may be a compressed block of zeros. See if there is.
-        if (rice_history < 128) && (i + 1 < num_samples) {
+        if (rice_history < 128) && (i + 1 < buf.len()) {
             // calculate rice param and decode block size
-            let k = 7 - log_2(rice_history) + ((rice_history + 16) >> 6);
+            let k = rice_history.leading_zeros() - 24 + ((rice_history + 16) >> 6);
             // The maximum value k above can take is 7. The rice limit seems to always be higher
             // than this. This is called infrequently enough that the if statement below should
             // have a minimal effect on performance.
-            if k as u8 > rice_limit {
+            if k as u8 > k_max {
                 debug_assert!(false,
                               "k ({}) greater than rice limit ({}). Unsure how to continue.",
                               k,
-                              rice_limit);
+                              k_max);
             }
+
 
             // Apple version
             let k = k as u8;
-            let wb_local = (1 << rice_limit) - 1;
-            let mz = ((1 << k) - 1) & wb_local;
+            let wb_local = (1 << k_max) - 1;
+            let m = ((1 << k) - 1) & wb_local;
             // FFMPEG version
-            // let k = min(k as u8, rice_limit);
+            // let k = min(k as u8, k_max);
             // let mz = ((1 << k) - 1);
             // End versions
 
-            let zero_block_len = try!(decode_rice_scalar(reader, mz, k, 16)) as usize;
+            let zero_block_len = try!(decode_rice_symbol(reader, m, k, 16)) as usize;
 
             if zero_block_len > 0 {
-                if zero_block_len >= num_samples - i {
-                    // FFMPEG continues here but Apple does not. Let's be conservative.
+                if zero_block_len >= buf.len() - i {
                     return Err(());
                 }
                 // TODO: Use memset equivalent here.
