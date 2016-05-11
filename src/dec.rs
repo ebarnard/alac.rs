@@ -65,6 +65,10 @@ impl Decoder {
         &self.config
     }
 
+    pub fn output_buffer_len(&self) -> usize {
+        self.config.frame_length as usize * self.config.num_channels as usize
+    }
+
     pub fn decode_packet<'a, S: Sample>(&mut self,
                                         packet: &[u8],
                                         out: &'a mut [S])
@@ -74,7 +78,7 @@ impl Decoder {
         let mut channel_index = 0;
         let mut frame_samples = None;
 
-        assert!(out.len() >= self.config.frame_length as usize * self.config.num_channels as usize);
+        assert!(out.len() >= self.output_buffer_len());
         assert!(S::bits() >= self.config.bit_depth);
 
         loop {
