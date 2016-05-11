@@ -86,13 +86,12 @@ impl<'a> BitCursor<'a> {
         Ok(ret)
     }
 
-    pub fn position(&self) -> (usize, u8) {
-        (self.position, self.bit_position)
-    }
 
     #[inline]
     fn check_avail(&self, bit_len: usize) -> Result<(), ()> {
-        let pos = self.position + (bit_len + self.bit_position as usize - 1) / 8;
+        let bit_pos = self.bit_position as usize + bit_len;
+        let pos = self.position + bit_pos >> 3;
+
         if pos < self.buf.len() {
             Ok(())
         } else {
@@ -100,6 +99,7 @@ impl<'a> BitCursor<'a> {
         }
     }
 
+    #[inline]
     pub fn skip(&mut self, bit_len: usize) -> Result<(), ()> {
         try!(self.check_avail(bit_len));
         self.skip_unckecked(bit_len);
@@ -114,16 +114,9 @@ impl<'a> BitCursor<'a> {
         self.bit_position = (bit_pos & 7) as u8;
     }
 
+    #[inline]
     pub fn skip_to_byte(&mut self) -> Result<(), ()> {
-        let bit_position = self.bit_position;
-        if bit_position == 0 {
-            Ok(())
-        } else {
-            self.skip(8 - bit_position as usize)
-        }
-    }
-
-    pub fn buf(&self) -> &'a [u8] {
-        self.buf
+        let skip = self.bit_position & 7;
+        self.skip(skip as usize)
     }
 }
