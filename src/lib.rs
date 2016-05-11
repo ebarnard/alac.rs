@@ -69,6 +69,38 @@ impl DecoderConfig {
         })
     }
 
+    pub fn from_sdp_format_parameters(params: &str) -> Result<DecoderConfig, ()> {
+        use std::str::FromStr;
+
+        fn parse<T: FromStr>(val: Option<&str>) -> Result<T, ()> {
+            let val = try!(val.ok_or(()));
+            val.parse().map_err(|_| ())
+        }
+
+        let mut params = params.split_whitespace();
+
+        let config = DecoderConfig {
+            frame_length: try!(parse(params.next())),
+            compatible_version: try!(parse(params.next())),
+            bit_depth: try!(parse(params.next())),
+            pb: try!(parse(params.next())),
+            mb: try!(parse(params.next())),
+            kb: try!(parse(params.next())),
+            num_channels: try!(parse(params.next())),
+            max_run: try!(parse(params.next())),
+            max_frame_bytes: try!(parse(params.next())),
+            avg_bit_rate: try!(parse(params.next())),
+            sample_rate: try!(parse(params.next())),
+        };
+
+        // Check we haven't been passed too many values
+        if params.next().is_some() {
+            return Err(())
+        }
+
+        Ok(config)
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
@@ -94,6 +126,28 @@ mod tests {
     fn test_from_cookie() {
         let cookie_bytes = include_bytes!("../tests/data/magic_cookie.bin");
         let cookie = DecoderConfig::from_cookie(cookie_bytes).unwrap();
+
+        let comparison = DecoderConfig {
+            frame_length: 4096,
+            compatible_version: 0,
+            bit_depth: 16,
+            pb: 40,
+            mb: 10,
+            kb: 14,
+            num_channels: 2,
+            max_run: 255,
+            max_frame_bytes: 0,
+            avg_bit_rate: 0,
+            sample_rate: 44100
+        };
+
+        assert_eq!(cookie, comparison);
+    }
+
+    #[test]
+    fn test_from_sdp_format_parameters() {
+        let params = "4096  0   16  40  10  14  2   255 0   0   44100";
+        let cookie = DecoderConfig::from_sdp_format_parameters(params).unwrap();
 
         let comparison = DecoderConfig {
             frame_length: 4096,
