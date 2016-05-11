@@ -333,27 +333,10 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
     // First we need to try to read Q which is encoded in unary and is at most
     // 9. If it is greater than 8 the entire symbol is simply encoded in binary
     // after Q.
-    //
-    // As there might be less than 9 bits left in the packet we fall back to
-    // reading one bit at a time if there is an error reading all 9 bits.
-    let q = match reader.peek_u16(9) {
-        Ok(bits) => {
-            let bits = bits << 7;
-            let q = (!bits).leading_zeros();
-            // We skip q + 1 as we need to skip the terminating bit if it exists.
-            try!(reader.skip(min(q as usize + 1, 9)));
-            q
-        }
-        Err(_) => {
-            // Here there is no need to check for the maimum length of 9 as we
-            // have effectively already done that above.
-            let mut q = 0;
-            while try!(reader.read_bit()) != false {
-                q += 1;
-            }
-            q
-        }
-    };
+    let mut q = 0;
+    while q < 9 && try!(reader.read_bit()) == true {
+        q += 1;
+    }
 
     if q > 8 {
         return Ok(try!(reader.read_u32(bps as usize)));
