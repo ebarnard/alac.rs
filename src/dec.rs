@@ -471,6 +471,8 @@ fn sign_extend(val: i32, bits: u8) -> i32 {
 }
 
 fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
+    // When lpc_order is 31 samples are encoded using differential coding. Samples values are the
+    // sum of the previous and the difference between the previous and current sample.
     for i in 1..buf.len() {
         buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
     }
@@ -479,39 +481,51 @@ fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
 fn lpc_predict(buf: &mut [i32], bps: u8, lpc_coefs: &mut [i16], lpc_quant: u32) {
     let lpc_order = lpc_coefs.len();
 
-    // Read warm-up samples
+    // Prediction needs lpc_order + 1 previous decoded samples.
     for i in 1..min(lpc_order + 1, buf.len()) {
         buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
     }
 
-    // TODO: Might be worth doing a couple of unrolled versions for order 4 and 8
     for i in (lpc_order + 1)..buf.len() {
-        let d = buf[i - lpc_order - 1];
-        let pred_index = i - lpc_order;
-        let prediction_error = buf[i];
+        // The (lpc_order - 1)'th predicted sample is used as the mean signal value for this
+        // prediction.
+        let mean = buf[i - lpc_order - 1];
 
-        // Do LPC prediction
-        let mut val = 0;
-        for j in 0..lpc_order {
-            val += (buf[pred_index + j] - d) * (lpc_coefs[j] as i32);
+        // The previous lpc_order samples are used to predict this sample.
+        let buf = &mut buf[i - lpc_order..i + 1];
+
+        // Predict the next sample using linear predictive coding.
+        let mut predicted = 0;
+        for (x, coef) in buf.iter().zip(lpc_coefs.iter()) {
+            predicted += (x - mean) * (*coef as i32);
         }
-        // 1 << (lpc_quant - 1) sets the lpc_quant'th bit
-        val = (val + (1 << (lpc_quant - 1))) >> lpc_quant;
-        val += d + prediction_error;
-        buf[i] = sign_extend(val, bps);
 
-        // Adapt LPC coefficients
-        let mut prediction_error = prediction_error;
-        let prediction_error_sign = prediction_error.signum();
-        if prediction_error_sign != 0 {
+        // Round up to and then truncate by lpc_quant bits.
+        // 1 << (lpc_quant - 1) sets the (lpc_quant - 1)'th bit.
+        let predicted = (predicted + (1 << (lpc_quant - 1))) >> lpc_quant;
+
+        // Store the sample for output and to be used in the next prediction.
+        let prediction_error = buf[lpc_order];
+        let sample = predicted + mean + prediction_error;
+        buf[lpc_order] = sign_extend(sample, bps);
+
+        if prediction_error != 0 {
+            // The prediction was not exact so adjust LPC coefficients to try to reduce the size
+            // of the next prediction error. Add or subtract 1 from each coefficient until the
+            // sign of error has changed or we run out of coefficients to adjust.
+            let error_sign = prediction_error.signum();
+
+            // This implementation always uses a positive prediction error.
+            let mut prediction_error = error_sign * prediction_error;
+
             for j in 0..lpc_order {
-                let val = d - buf[pred_index + j];
-                let sign = val.signum() * prediction_error_sign;
-                lpc_coefs[j] -= sign as i16;
-                let val = val * sign;
-                prediction_error -= (val >> lpc_quant) * (j as i32 + 1);
-
-                if prediction_error * prediction_error_sign <= 0 {
+                let predicted = buf[j] - mean;
+                let sign = predicted.signum() * error_sign;
+                lpc_coefs[j] += sign as i16;
+                // Update the prediction error now we have changed a coefficient.
+                prediction_error -= error_sign * (predicted * sign >> lpc_quant) * (j as i32 + 1);
+                // Stop updating coefficients if the prediction error changes sign.
+                if prediction_error <= 0 {
                     break;
                 }
             }
