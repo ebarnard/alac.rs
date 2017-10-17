@@ -327,10 +327,13 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
 #[inline]
 fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
     // Rice coding encodes a symbol S as the product of a quotient Q and a
-    // modulus M added to a remainder R. Q is encoded in unary (Q 1s followed)
-    // by a 0 and R in binary in K bits.
+    // modulus M added to a remainder R. Q is encoded in unary (Q 1s followed
+    // by a 0) and R in binary in K bits.
     //
     // S = Q × M + R where M = 2^K
+
+    // K cannot be zero as a modulus is 2^K - 1 is used instead of 2^K.
+    debug_assert!(k != 0);
 
     let k = k as usize;
 
@@ -338,39 +341,34 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
     // 9. If it is greater than 8 the entire symbol is simply encoded in binary
     // after Q.
     let mut q = 0;
-    while q < 9 && try!(reader.read_bit()) == true {
+    while q != 9 && try!(reader.read_bit()) == true {
         q += 1;
     }
 
-    if q > 8 {
+    if q == 9 {
         return Ok(try!(reader.read_u32(bps as usize)));
     }
 
     // A modulus of 2^K - 1 is used instead of 2^K. Therefore if K = 1 then
-    // M = 1 and there is no remainder (K cannot equal 0 - log cannot be 0).
-    // This is presumably an optimisation that aims to store small numbers more
-    // efficiently.
+    // M = 1 and there is no remainder (here K cannot be 0 as it comes from
+    // log_2 which cannot be 0). This is presumably an optimisation that aims
+    // to store small numbers more efficiently.
     if k == 1 {
         return Ok(q);
     }
 
+    // Next we read the remainder which is at most K bits. If it is zero it is
+    // stored as K - 1 zeros. Otherwise it is stored in K bits as R + 1. This
+    // saves one bit in cases where the remainder is zero.
+    let mut r = try!(reader.read_u32(k - 1));
+    if r > 0 {
+        let extra_bit = try!(reader.read_bit()) as u32;
+        r = (r << 1) + extra_bit - 1;
+    }
+
     // Due to the issue mentioned in rice_decompress we use a parameter for m
     // rather than calculating it here (e.g. let mut s = (q << k) - q);
-    let mut s = q * m;
-
-    // Next we read the remainder which is at most K bits. The remainder is
-    // stored as R + 1 though the value can take 0 as well as 1. If either of
-    // these are the case we claim to have only read K - 1 bits. This is
-    // probably an optimisation as the value of the lowest bit then corresponds
-    // to Q values of 0 or 1 saving a bit in those cases. I'm not sure why this
-    // would be an optimisation though.
-    let r = try!(reader.peek_u32(k));
-    if r > 1 {
-        s += r - 1;
-        try!(reader.skip(k));
-    } else {
-        try!(reader.skip(k - 1));
-    }
+    let s = q * m + r;
 
     Ok(s)
 }
