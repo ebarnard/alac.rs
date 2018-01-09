@@ -58,7 +58,7 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    pub fn peek_u32(&mut self, len: usize) -> Result<u32, ()> {
+    pub fn read_u32(&mut self, len: usize) -> Result<u32, ()> {
         assert!(len <= 32);
         try!(self.check_avail(len));
 
@@ -71,16 +71,10 @@ impl<'a> BitCursor<'a> {
         let ret = ret << 24 + self.bit_position;
         let ret = ret >> (64 - len);
 
+        self.skip_unckecked(len);
+
         Ok(ret as u32)
     }
-
-    #[inline]
-    pub fn read_u32(&mut self, len: usize) -> Result<u32, ()> {
-        let ret = try!(self.peek_u32(len));
-        self.skip_unckecked(len);
-        Ok(ret)
-    }
-
 
     #[inline]
     fn check_avail(&self, bit_len: usize) -> Result<(), ()> {
