@@ -95,7 +95,7 @@ impl DecoderConfig {
 
         // Check we haven't been passed too many values
         if params.next().is_some() {
-            return Err(())
+            return Err(());
         }
 
         Ok(config)
@@ -138,7 +138,7 @@ mod tests {
             max_run: 255,
             max_frame_bytes: 0,
             avg_bit_rate: 0,
-            sample_rate: 44100
+            sample_rate: 44100,
         };
 
         assert_eq!(cookie, comparison);
@@ -160,7 +160,7 @@ mod tests {
             max_run: 255,
             max_frame_bytes: 0,
             avg_bit_rate: 0,
-            sample_rate: 44100
+            sample_rate: 44100,
         };
 
         assert_eq!(cookie, comparison);

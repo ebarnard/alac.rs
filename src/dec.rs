@@ -69,10 +69,11 @@ impl Decoder {
         self.config.frame_length as usize * self.config.num_channels as usize
     }
 
-    pub fn decode_packet<'a, S: Sample>(&mut self,
-                                        packet: &[u8],
-                                        out: &'a mut [S])
-                                        -> Result<&'a [S], ()> {
+    pub fn decode_packet<'a, S: Sample>(
+        &mut self,
+        packet: &[u8],
+        out: &'a mut [S],
+    ) -> Result<&'a [S], ()> {
         let mut reader = BitCursor::new(packet);
 
         let mut channel_index = 0;
@@ -98,11 +99,13 @@ impl Decoder {
                         return Err(());
                     }
 
-                    let element_samples = try!(decode_audio_element(self,
-                                                                    &mut reader,
-                                                                    out,
-                                                                    channel_index,
-                                                                    element_channels));
+                    let element_samples = try!(decode_audio_element(
+                        self,
+                        &mut reader,
+                        out,
+                        channel_index,
+                        element_channels
+                    ));
 
                     // Check that the number of samples are consistent within elements of a frame.
                     if let Some(frame_samples) = frame_samples {
@@ -174,12 +177,13 @@ impl Decoder {
     }
 }
 
-fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
-                                       reader: &mut BitCursor<'a>,
-                                       out: &mut [S],
-                                       channel_index: u8,
-                                       element_channels: u8)
-                                       -> Result<u32, ()> {
+fn decode_audio_element<'a, S: Sample>(
+    this: &mut Decoder,
+    reader: &mut BitCursor<'a>,
+    out: &mut [S],
+    channel_index: u8,
+    element_channels: u8,
+) -> Result<u32, ()> {
     // Unused
     let _element_instance_tag = try!(reader.read_u8(4));
 
@@ -257,11 +261,13 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // https://github.com/ruud-v-a/claxon/blob/master/src/subframe.rs
         // It should be possible to it without allocating buffers quite easily
         for i in 0..(element_channels as usize) {
-            try!(rice_decompress(reader,
-                                 &this.config,
-                                 &mut mix_buf[i],
-                                 chan_bits,
-                                 pb_factor[i]));
+            try!(rice_decompress(
+                reader,
+                &this.config,
+                &mut mix_buf[i],
+                chan_bits,
+                pb_factor[i]
+            ));
 
             if lpc_mode[i as usize] == 15 {
                 // the special "numActive == 31" mode can be done in-place
@@ -284,10 +290,12 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
         // now read the shifted values into the shift buffer
         // We directly apply the shifts to avoid needing a buffer
         if let Some(mut extra_bits_reader) = extra_bits_reader {
-            try!(append_extra_bits(&mut extra_bits_reader,
-                                   &mut mix_buf,
-                                   element_channels,
-                                   sample_shift));
+            try!(append_extra_bits(
+                &mut extra_bits_reader,
+                &mut mix_buf,
+                element_channels,
+                sample_shift
+            ));
         }
 
         for i in 0..num_samples {
@@ -299,7 +307,6 @@ fn decode_audio_element<'a, S: Sample>(this: &mut Decoder,
                 out[idx] = S::from_decoder(sample, this.config.bit_depth);
             }
         }
-
     } else {
         // uncompressed frame, copy data into the mix buffers to use common output code
 
@@ -373,12 +380,13 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
     Ok(s)
 }
 
-fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
-                       config: &DecoderConfig,
-                       buf: &mut [i32],
-                       bps: u8,
-                       pb_factor: u16)
-                       -> Result<(), ()> {
+fn rice_decompress<'a>(
+    reader: &mut BitCursor<'a>,
+    config: &DecoderConfig,
+    buf: &mut [i32],
+    bps: u8,
+    pb_factor: u16,
+) -> Result<(), ()> {
     #[inline(always)]
     fn log_2(x: u32) -> u32 {
         31 - (x | 1).leading_zeros()
@@ -424,12 +432,13 @@ fn rice_decompress<'a>(reader: &mut BitCursor<'a>,
             // than this. This is called infrequently enough that the if statement below should
             // have a minimal effect on performance.
             if k as u8 > k_max {
-                debug_assert!(false,
-                              "k ({}) greater than rice limit ({}). Unsure how to continue.",
-                              k,
-                              k_max);
+                debug_assert!(
+                    false,
+                    "k ({}) greater than rice limit ({}). Unsure how to continue.",
+                    k,
+                    k_max
+                );
             }
-
 
             // Apple version
             let k = k as u8;
@@ -551,11 +560,12 @@ fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
     }
 }
 
-fn append_extra_bits<'a>(reader: &mut BitCursor<'a>,
-                         buf: &mut [&mut [i32]; 2],
-                         channels: u8,
-                         sample_shift: u8)
-                         -> Result<(), ()> {
+fn append_extra_bits<'a>(
+    reader: &mut BitCursor<'a>,
+    buf: &mut [&mut [i32]; 2],
+    channels: u8,
+    sample_shift: u8,
+) -> Result<(), ()> {
     debug_assert_eq!(buf[0].len(), buf[1].len());
 
     let channels = min(channels as usize, buf.len());
