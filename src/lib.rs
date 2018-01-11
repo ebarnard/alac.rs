@@ -1,5 +1,3 @@
-extern crate byteorder;
-
 mod bitcursor;
 mod dec;
 
@@ -22,9 +20,6 @@ pub struct DecoderConfig {
 
 impl DecoderConfig {
     pub fn from_cookie(mut cookie: &[u8]) -> Result<DecoderConfig, ()> {
-        use byteorder::{BigEndian, ReadBytesExt};
-        use std::io::Cursor;
-
         // For historical reasons the decoder needs to be resilient to magic cookies vended by older encoders.
         // As specified in the ALACMagicCookieDescription.txt document, there may be additional data encapsulating
         // the ALACSpecificConfig. This would consist of format ('frma') and 'alac' atoms which precede the
@@ -51,21 +46,18 @@ impl DecoderConfig {
             return Err(());
         }
 
-        let mut reader = Cursor::new(cookie);
-
-        // These reads are guarenteed to succeed
         Ok(DecoderConfig {
-            frame_length: reader.read_u32::<BigEndian>().unwrap(),
-            compatible_version: reader.read_u8().unwrap(),
-            bit_depth: reader.read_u8().unwrap(),
-            pb: reader.read_u8().unwrap(),
-            mb: reader.read_u8().unwrap(),
-            kb: reader.read_u8().unwrap(),
-            num_channels: reader.read_u8().unwrap(),
-            max_run: reader.read_u16::<BigEndian>().unwrap(),
-            max_frame_bytes: reader.read_u32::<BigEndian>().unwrap(),
-            avg_bit_rate: reader.read_u32::<BigEndian>().unwrap(),
-            sample_rate: reader.read_u32::<BigEndian>().unwrap(),
+            frame_length: read_be_u32(&cookie[0..4]),
+            compatible_version: cookie[4],
+            bit_depth: cookie[5],
+            pb: cookie[6],
+            mb: cookie[7],
+            kb: cookie[8],
+            num_channels: cookie[9],
+            max_run: read_be_u16(&cookie[10..12]),
+            max_frame_bytes: read_be_u32(&cookie[12..16]),
+            avg_bit_rate: read_be_u32(&cookie[16..20]),
+            sample_rate: read_be_u32(&cookie[20..24]),
         })
     }
 
@@ -116,6 +108,16 @@ impl DecoderConfig {
     pub fn max_frames_per_packet(&self) -> u32 {
         self.frame_length
     }
+}
+
+fn read_be_u16(buf: &[u8]) -> u16 {
+    assert_eq!(buf.len(), 2);
+    ((buf[0] as u16) << 8) | (buf[1] as u16)
+}
+
+fn read_be_u32(buf: &[u8]) -> u32 {
+    assert_eq!(buf.len(), 4);
+    ((buf[0] as u32) << 24) | ((buf[1] as u32) << 16) | ((buf[2] as u32) << 8) | (buf[3] as u32)
 }
 
 #[cfg(test)]
