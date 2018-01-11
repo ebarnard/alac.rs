@@ -3,7 +3,7 @@ use std::cmp::min;
 use DecoderConfig;
 use bitcursor::BitCursor;
 
-pub trait Sample {
+pub trait Sample: private::Sealed {
     /// Constructs `Self` from a right-aligned `bits` bit sample
     fn from_decoder(sample: i32, bits: u8) -> Self;
 
@@ -32,6 +32,13 @@ impl Sample for i32 {
     fn bits() -> u8 {
         32
     }
+}
+
+mod private {
+    /// Sealed prevents other crates from implementing any traits that use it.
+    pub trait Sealed {}
+    impl Sealed for i16 {}
+    impl Sealed for i32 {}
 }
 
 pub struct Decoder {
