@@ -1,12 +1,14 @@
 // Compares a single 16 bit 2 channel packet against the reference decoder 4th frame of alac.caf
 extern crate alac;
 
+use alac::{Decoder, DecoderConfig};
+
 #[test]
 fn main() {
     let cookie_bytes = include_bytes!("data/magic_cookie.bin");
     let packet = include_bytes!("data/packet_16_bit.bin");
 
-    let mut dec = alac::Decoder::from_cookie(cookie_bytes).unwrap();
+    let mut dec = Decoder::new(DecoderConfig::from_cookie(cookie_bytes).unwrap());
     let mut out = vec![0i16; 8192];
     dec.decode_packet(&packet[..8581], &mut out).unwrap();
 

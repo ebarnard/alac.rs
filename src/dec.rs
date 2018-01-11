@@ -63,11 +63,6 @@ impl Decoder {
         }
     }
 
-    pub fn from_cookie(cookie: &[u8]) -> Result<Decoder, ()> {
-        let config = try!(DecoderConfig::from_cookie(cookie));
-        Ok(Decoder::new(config))
-    }
-
     pub fn config(&self) -> &DecoderConfig {
         &self.config
     }
