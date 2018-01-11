@@ -108,6 +108,10 @@ impl DecoderConfig {
     pub fn max_frames_per_packet(&self) -> u32 {
         self.frame_length
     }
+
+    pub fn max_samples_per_packet(&self) -> u32 {
+        self.frame_length * self.num_channels as u32
+    }
 }
 
 fn read_be_u16(buf: &[u8]) -> u16 {
