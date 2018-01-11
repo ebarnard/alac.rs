@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use DecoderConfig;
+use StreamInfo;
 use bitcursor::BitCursor;
 
 pub trait Sample: private::Sealed {
@@ -42,7 +42,7 @@ mod private {
 }
 
 pub struct Decoder {
-    config: DecoderConfig,
+    config: StreamInfo,
     buf: Box<[i32]>,
 }
 
@@ -56,14 +56,14 @@ const ID_FIL: u8 = 6; // filler element
 const ID_END: u8 = 7; // frame end
 
 impl Decoder {
-    pub fn new(config: DecoderConfig) -> Decoder {
+    pub fn new(config: StreamInfo) -> Decoder {
         Decoder {
             config: config,
             buf: vec![0; config.frame_length as usize * 2].into_boxed_slice(),
         }
     }
 
-    pub fn config(&self) -> &DecoderConfig {
+    pub fn stream_info(&self) -> &StreamInfo {
         &self.config
     }
 
@@ -380,7 +380,7 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
 
 fn rice_decompress<'a>(
     reader: &mut BitCursor<'a>,
-    config: &DecoderConfig,
+    config: &StreamInfo,
     buf: &mut [i32],
     bps: u8,
     pb_factor: u16,

@@ -4,7 +4,7 @@ mod dec;
 pub use dec::{Decoder, Sample};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct DecoderConfig {
+pub struct StreamInfo {
     frame_length: u32,
     compatible_version: u8,
     bit_depth: u8,
@@ -18,8 +18,8 @@ pub struct DecoderConfig {
     sample_rate: u32,
 }
 
-impl DecoderConfig {
-    pub fn from_cookie(mut cookie: &[u8]) -> Result<DecoderConfig, ()> {
+impl StreamInfo {
+    pub fn from_cookie(mut cookie: &[u8]) -> Result<StreamInfo, ()> {
         // For historical reasons the decoder needs to be resilient to magic cookies vended by older encoders.
         // As specified in the ALACMagicCookieDescription.txt document, there may be additional data encapsulating
         // the ALACSpecificConfig. This would consist of format ('frma') and 'alac' atoms which precede the
@@ -46,7 +46,7 @@ impl DecoderConfig {
             return Err(());
         }
 
-        Ok(DecoderConfig {
+        Ok(StreamInfo {
             frame_length: read_be_u32(&cookie[0..4]),
             compatible_version: cookie[4],
             bit_depth: cookie[5],
@@ -61,7 +61,7 @@ impl DecoderConfig {
         })
     }
 
-    pub fn from_sdp_format_parameters(params: &str) -> Result<DecoderConfig, ()> {
+    pub fn from_sdp_format_parameters(params: &str) -> Result<StreamInfo, ()> {
         use std::str::FromStr;
 
         fn parse<T: FromStr>(val: Option<&str>) -> Result<T, ()> {
@@ -71,7 +71,7 @@ impl DecoderConfig {
 
         let mut params = params.split_whitespace();
 
-        let config = DecoderConfig {
+        let config = StreamInfo {
             frame_length: try!(parse(params.next())),
             compatible_version: try!(parse(params.next())),
             bit_depth: try!(parse(params.next())),
@@ -126,14 +126,14 @@ fn read_be_u32(buf: &[u8]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::DecoderConfig;
+    use super::StreamInfo;
 
     #[test]
     fn test_from_cookie() {
         let cookie_bytes = include_bytes!("../tests/data/magic_cookie.bin");
-        let cookie = DecoderConfig::from_cookie(cookie_bytes).unwrap();
+        let cookie = StreamInfo::from_cookie(cookie_bytes).unwrap();
 
-        let comparison = DecoderConfig {
+        let comparison = StreamInfo {
             frame_length: 4096,
             compatible_version: 0,
             bit_depth: 16,
@@ -153,9 +153,9 @@ mod tests {
     #[test]
     fn test_from_sdp_format_parameters() {
         let params = "4096  0   16  40  10  14  2   255 0   0   44100";
-        let cookie = DecoderConfig::from_sdp_format_parameters(params).unwrap();
+        let cookie = StreamInfo::from_sdp_format_parameters(params).unwrap();
 
-        let comparison = DecoderConfig {
+        let comparison = StreamInfo {
             frame_length: 4096,
             compatible_version: 0,
             bit_depth: 16,
