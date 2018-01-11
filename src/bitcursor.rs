@@ -1,111 +1,114 @@
+use std::cmp;
+
+const U32_BITS: usize = 32;
+
 #[derive(Clone)]
 pub struct BitCursor<'a> {
     buf: &'a [u8],
-    position: usize,
-    bit_position: u8,
+    current: u32,
+    current_len: u8,
+    current_pos: u8,
 }
 
 impl<'a> BitCursor<'a> {
     pub fn new(buf: &'a [u8]) -> BitCursor<'a> {
-        BitCursor {
+        let mut cursor = BitCursor {
             buf: buf,
-            position: 0,
-            bit_position: 0,
-        }
+            current: 0,
+            current_len: 0,
+            current_pos: 0,
+        };
+        cursor.advance();
+        cursor
     }
 
     #[inline]
     pub fn read_bit(&mut self) -> Result<bool, ()> {
-        self.read_u8(1).map(|b| {
-            match b {
-                0 => false,
-                1 => true,
-                _ => unreachable!(),
-            }
+        Ok(match try!(self.read_u32(1)) {
+            0 => false,
+            1 => true,
+            _ => unreachable!(),
         })
     }
 
     #[inline]
-    pub fn read_u8(&mut self, len: usize) -> Result<u8, ()> {
-        assert!(len <= 8);
-        try!(self.check_avail(len));
-
-        let ret: u16 = ((self.buf[self.position] as u16) << 8) +
-                       *self.buf.get(self.position + 1).unwrap_or(&0) as u16;
-        let ret = ret << self.bit_position;
-        let ret = ret >> (16 - len);
-
-        self.skip_unckecked(len);
-
-        Ok(ret as u8)
+    pub fn read_u8(&mut self, bits: usize) -> Result<u8, ()> {
+        assert!(bits <= 8);
+        Ok(try!(self.read_u32(bits)) as u8)
     }
 
     #[inline]
-    pub fn read_u16(&mut self, len: usize) -> Result<u16, ()> {
-        assert!(len <= 16);
-        try!(self.check_avail(len));
-
-        let ret: u32 = ((self.buf[self.position] as u32) << 16) +
-                       ((*self.buf.get(self.position + 1).unwrap_or(&0) as u32) << 8) +
-                       *self.buf.get(self.position + 2).unwrap_or(&0) as u32;
-
-        let ret = ret << 8 + self.bit_position;
-        let ret = ret >> (32 - len);
-
-        self.skip_unckecked(len);
-
-        Ok(ret as u16)
+    pub fn read_u16(&mut self, bits: usize) -> Result<u16, ()> {
+        assert!(bits <= 16);
+        Ok(try!(self.read_u32(bits)) as u16)
     }
 
     #[inline]
-    pub fn read_u32(&mut self, len: usize) -> Result<u32, ()> {
-        assert!(len <= 32);
-        try!(self.check_avail(len));
+    pub fn read_u32(&mut self, bits: usize) -> Result<u32, ()> {
+        assert!(bits <= 32);
+        try!(self.check_enough_bits(bits));
 
-        let ret: u64 = ((self.buf[self.position] as u64) << 32) +
-                       ((*self.buf.get(self.position + 1).unwrap_or(&0) as u64) << 24) +
-                       ((*self.buf.get(self.position + 2).unwrap_or(&0) as u64) << 16) +
-                       ((*self.buf.get(self.position + 3).unwrap_or(&0) as u64) << 8) +
-                       (*self.buf.get(self.position + 4).unwrap_or(&0) as u64);
-
-        let ret = ret << 24 + self.bit_position;
-        let ret = ret >> (64 - len);
-
-        self.skip_unckecked(len);
-
-        Ok(ret as u32)
+        let val = self.current << self.current_pos;
+        let bits_remaining = bits.checked_sub(U32_BITS - self.current_pos as usize);
+        let val = if let Some(bits_remaining) = bits_remaining {
+            let prev_pos = self.current_pos;
+            self.advance();
+            self.current_pos = bits_remaining as u8;
+            val | (self.current >> (U32_BITS - prev_pos as usize))
+        } else {
+            // We are not reading past the end of self.current so only increment the bit position
+            self.current_pos += bits as u8;
+            val
+        };
+        Ok(val >> (U32_BITS - bits))
     }
 
     #[inline]
-    fn check_avail(&self, bit_len: usize) -> Result<(), ()> {
-        let bit_pos = self.bit_position as usize + bit_len;
-        let pos = self.position + bit_pos >> 3;
+    pub fn skip(&mut self, bits: usize) -> Result<(), ()> {
+        try!(self.check_enough_bits(bits));
 
-        if pos < self.buf.len() {
+        if let Some(skip_buf_bits) = bits.checked_sub(U32_BITS - self.current_pos as usize) {
+            // Skip skip_buf_bits bits and refill self.current
+            self.buf = &self.buf[skip_buf_bits >> 3..];
+            self.advance();
+            self.current_pos = (skip_buf_bits & 7) as u8;
+        } else {
+            // We aren't skipping past the end of self.current
+            self.current_pos += bits as u8;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub fn skip_to_byte(&mut self) -> Result<(), ()> {
+        let skip = self.current_pos & 7;
+        if skip != 8 {
+            self.skip(skip as usize)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    fn check_enough_bits(&self, bits: usize) -> Result<(), ()> {
+        if bits <= (self.buf.len() << 3) + (self.current_len - self.current_pos) as usize {
             Ok(())
         } else {
             Err(())
         }
     }
 
-    #[inline]
-    pub fn skip(&mut self, bit_len: usize) -> Result<(), ()> {
-        try!(self.check_avail(bit_len));
-        self.skip_unckecked(bit_len);
-        Ok(())
-    }
-
-    #[inline]
-    fn skip_unckecked(&mut self, bit_len: usize) {
-        let bit_pos = self.bit_position as usize + bit_len;
-
-        self.position += bit_pos >> 3;
-        self.bit_position = (bit_pos & 7) as u8;
-    }
-
-    #[inline]
-    pub fn skip_to_byte(&mut self) -> Result<(), ()> {
-        let skip = self.bit_position & 7;
-        self.skip(skip as usize)
+    fn advance(&mut self) {
+        let bytes_to_read = cmp::min(4, self.buf.len());
+        let (left, right) = self.buf.split_at(bytes_to_read);
+        let mut bytes = [0; 4];
+        (&mut bytes[0..bytes_to_read]).copy_from_slice(&left);
+        self.current = ((bytes[0] as u32) << 24) |
+                       ((bytes[1] as u32) << 16) |
+                       ((bytes[2] as u32) << 8) |
+                       bytes[3] as u32;
+        self.buf = right;
+        self.current_len = bytes_to_read as u8 * 8;
+        self.current_pos = 0;
     }
 }
