@@ -81,9 +81,9 @@ impl<'a> BitCursor<'a> {
 
     #[inline]
     pub fn skip_to_byte(&mut self) -> Result<(), ()> {
-        let skip = self.current_pos & 7;
-        if skip != 8 {
-            self.skip(skip as usize)
+        let pos_into_byte = self.current_pos & 7;
+        if pos_into_byte != 0 {
+            self.skip(8 - pos_into_byte as usize)
         } else {
             Ok(())
         }
@@ -110,5 +110,19 @@ impl<'a> BitCursor<'a> {
         self.buf = right;
         self.current_len = bytes_to_read as u8 * 8;
         self.current_pos = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BitCursor;
+
+    #[test]
+    fn skip_to_byte() {
+        let data = &[0xde, 0xad];
+        let mut reader = BitCursor::new(data);
+        reader.read_u8(5).unwrap();
+        reader.skip_to_byte().unwrap();
+        assert_eq!(reader.read_u8(8).unwrap(), 0xad);
     }
 }
