@@ -24,7 +24,7 @@ impl<'a> BitCursor<'a> {
 
     #[inline]
     pub fn read_bit(&mut self) -> Result<bool, ()> {
-        Ok(match try!(self.read_u32(1)) {
+        Ok(match self.read_u32(1)? {
             0 => false,
             1 => true,
             _ => unreachable!(),
@@ -34,19 +34,19 @@ impl<'a> BitCursor<'a> {
     #[inline]
     pub fn read_u8(&mut self, bits: usize) -> Result<u8, ()> {
         assert!(bits <= 8);
-        Ok(try!(self.read_u32(bits)) as u8)
+        Ok(self.read_u32(bits)? as u8)
     }
 
     #[inline]
     pub fn read_u16(&mut self, bits: usize) -> Result<u16, ()> {
         assert!(bits <= 16);
-        Ok(try!(self.read_u32(bits)) as u16)
+        Ok(self.read_u32(bits)? as u16)
     }
 
     #[inline]
     pub fn read_u32(&mut self, bits: usize) -> Result<u32, ()> {
         assert!(bits <= 32);
-        try!(self.check_enough_bits(bits));
+        self.check_enough_bits(bits)?;
 
         let val = self.current << self.current_pos;
         let bits_remaining = bits.checked_sub(U32_BITS - self.current_pos as usize);
@@ -65,7 +65,7 @@ impl<'a> BitCursor<'a> {
 
     #[inline]
     pub fn skip(&mut self, bits: usize) -> Result<(), ()> {
-        try!(self.check_enough_bits(bits));
+        self.check_enough_bits(bits)?;
 
         if let Some(skip_buf_bits) = bits.checked_sub(U32_BITS - self.current_pos as usize) {
             // Skip skip_buf_bits bits and refill self.current

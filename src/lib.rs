@@ -65,24 +65,24 @@ impl StreamInfo {
         use std::str::FromStr;
 
         fn parse<T: FromStr>(val: Option<&str>) -> Result<T, ()> {
-            let val = try!(val.ok_or(()));
+            let val = val.ok_or(())?;
             val.parse().map_err(|_| ())
         }
 
         let mut params = params.split_whitespace();
 
         let config = StreamInfo {
-            frame_length: try!(parse(params.next())),
-            compatible_version: try!(parse(params.next())),
-            bit_depth: try!(parse(params.next())),
-            pb: try!(parse(params.next())),
-            mb: try!(parse(params.next())),
-            kb: try!(parse(params.next())),
-            num_channels: try!(parse(params.next())),
-            max_run: try!(parse(params.next())),
-            max_frame_bytes: try!(parse(params.next())),
-            avg_bit_rate: try!(parse(params.next())),
-            sample_rate: try!(parse(params.next())),
+            frame_length: parse(params.next())?,
+            compatible_version: parse(params.next())?,
+            bit_depth: parse(params.next())?,
+            pb: parse(params.next())?,
+            mb: parse(params.next())?,
+            kb: parse(params.next())?,
+            num_channels: parse(params.next())?,
+            max_run: parse(params.next())?,
+            max_frame_bytes: parse(params.next())?,
+            avg_bit_rate: parse(params.next())?,
+            sample_rate: parse(params.next())?,
         };
 
         // Check we haven't been passed too many values

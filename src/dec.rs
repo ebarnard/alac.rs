@@ -81,7 +81,7 @@ impl Decoder {
         assert!(S::bits() >= self.config.bit_depth);
 
         loop {
-            let tag = try!(reader.read_u8(3));
+            let tag = reader.read_u8(3)?;
 
             match tag {
                 tag @ ID_SCE | tag @ ID_LFE | tag @ ID_CPE => {
@@ -97,13 +97,13 @@ impl Decoder {
                         return Err(());
                     }
 
-                    let element_samples = try!(decode_audio_element(
+                    let element_samples = decode_audio_element(
                         self,
                         &mut reader,
                         out,
                         channel_index,
-                        element_channels
-                    ));
+                        element_channels,
+                    )?;
 
                     // Check that the number of samples are consistent within elements of a frame.
                     if let Some(frame_samples) = frame_samples {
@@ -125,40 +125,40 @@ impl Decoder {
 
                     // the tag associates this data stream element with a given audio element
                     // Unused
-                    let _element_instance_tag = try!(reader.read_u8(4));
-                    let data_byte_align_flag = try!(reader.read_bit());
+                    let _element_instance_tag = reader.read_u8(4)?;
+                    let data_byte_align_flag = reader.read_bit()?;
 
                     // 8-bit count or (8-bit + 8-bit count) if 8-bit count == 255
-                    let mut skip_bytes = try!(reader.read_u8(8)) as usize;
+                    let mut skip_bytes = reader.read_u8(8)? as usize;
                     if skip_bytes == 255 {
-                        skip_bytes += try!(reader.read_u8(8)) as usize;
+                        skip_bytes += reader.read_u8(8)? as usize;
                     }
 
                     // the align flag means the bitstream should be byte-aligned before reading the
                     // following data bytes
                     if data_byte_align_flag {
-                        try!(reader.skip_to_byte());
+                        reader.skip_to_byte()?;
                     }
 
-                    try!(reader.skip(skip_bytes * 8));
+                    reader.skip(skip_bytes * 8)?;
                 }
                 ID_FIL => {
                     // fill element -- parse but ignore
 
                     // 4-bit count or (4-bit + 8-bit count) if 4-bit count == 15
                     // - plus this weird -1 thing I still don't fully understand
-                    let mut skip_bytes = try!(reader.read_u8(4)) as usize;
+                    let mut skip_bytes = reader.read_u8(4)? as usize;
                     if skip_bytes == 15 {
-                        skip_bytes += try!(reader.read_u8(8)) as usize - 1
+                        skip_bytes += reader.read_u8(8)? as usize - 1
                     }
 
-                    try!(reader.skip(skip_bytes * 8));
+                    reader.skip(skip_bytes * 8)?;
                 }
                 ID_END => {
                     // We've finished decoding the frame. Skip to the end of this byte. There may
                     // be data left in the packet.
                     // TODO: Should we throw an error about leftover data.
-                    try!(reader.skip_to_byte());
+                    reader.skip_to_byte()?;
 
                     // Check that there were as many channels in the packet as there ought to be.
                     if channel_index != self.config.num_channels {
@@ -183,28 +183,28 @@ fn decode_audio_element<'a, S: Sample>(
     element_channels: u8,
 ) -> Result<u32, ()> {
     // Unused
-    let _element_instance_tag = try!(reader.read_u8(4));
+    let _element_instance_tag = reader.read_u8(4)?;
 
-    let unused = try!(reader.read_u16(12));
+    let unused = reader.read_u16(12)?;
     if unused != 0 {
         return Err(()); // Unused header data not 0
     }
 
     // read the 1-bit "partial frame" flag, 2-bit "shift-off" flag & 1-bit "escape" flag
-    let partial_frame = try!(reader.read_bit());
+    let partial_frame = reader.read_bit()?;
 
-    let sample_shift_bytes = try!(reader.read_u8(2));
+    let sample_shift_bytes = reader.read_u8(2)?;
     if sample_shift_bytes >= 3 {
         return Err(()); // must be 1 or 2
     }
     let sample_shift = sample_shift_bytes * 8;
 
-    let is_uncompressed = try!(reader.read_bit());
+    let is_uncompressed = reader.read_bit()?;
 
     // check for partial frame to override requested numSamples
     let num_samples = if partial_frame {
         // TODO: this could change within a frame. That would be bad
-        let num_samples = try!(reader.read_u32(32));
+        let num_samples = reader.read_u32(32)?;
 
         if num_samples > this.config.frame_length {
             return Err(());
@@ -226,8 +226,8 @@ fn decode_audio_element<'a, S: Sample>(
         }
 
         // compressed frame, read rest of parameters
-        let mix_bits: u8 = try!(reader.read_u8(8));
-        let mix_res: i8 = try!(reader.read_u8(8)) as i8;
+        let mix_bits: u8 = reader.read_u8(8)?;
+        let mix_res: i8 = reader.read_u8(8)? as i8;
 
         let mut lpc_mode = [0; 2]; //u8
         let mut lpc_quant = [0; 2]; //u32
@@ -236,20 +236,20 @@ fn decode_audio_element<'a, S: Sample>(
         let mut lpc_coefs = [[0; 32]; 2]; //i16*
 
         for i in 0..(element_channels as usize) {
-            lpc_mode[i] = try!(reader.read_u8(4));
-            lpc_quant[i] = try!(reader.read_u8(4)) as u32;
-            pb_factor[i] = try!(reader.read_u8(3)) as u16;
-            lpc_order[i] = try!(reader.read_u8(5));
+            lpc_mode[i] = reader.read_u8(4)?;
+            lpc_quant[i] = reader.read_u8(4)? as u32;
+            pb_factor[i] = reader.read_u8(3)? as u16;
+            lpc_order[i] = reader.read_u8(5)?;
 
             // Coefficients are used in reverse order of storage for prediction
             for j in (0..lpc_order[i] as usize).rev() {
-                lpc_coefs[i][j] = try!(reader.read_u16(16)) as i16;
+                lpc_coefs[i][j] = reader.read_u16(16)? as i16;
             }
         }
 
         let extra_bits_reader = if sample_shift != 0 {
             let extra_bits_reader = reader.clone();
-            try!(reader.skip((sample_shift as usize) * num_samples * element_channels as usize));
+            reader.skip((sample_shift as usize) * num_samples * element_channels as usize)?;
             Some(extra_bits_reader)
         } else {
             None
@@ -259,13 +259,13 @@ fn decode_audio_element<'a, S: Sample>(
         // https://github.com/ruud-v-a/claxon/blob/master/src/subframe.rs
         // It should be possible to it without allocating buffers quite easily
         for i in 0..(element_channels as usize) {
-            try!(rice_decompress(
+            rice_decompress(
                 reader,
                 &this.config,
                 &mut mix_buf[i],
                 chan_bits,
-                pb_factor[i]
-            ));
+                pb_factor[i],
+            )?;
 
             if lpc_mode[i as usize] == 15 {
                 // the special "numActive == 31" mode can be done in-place
@@ -288,12 +288,12 @@ fn decode_audio_element<'a, S: Sample>(
         // now read the shifted values into the shift buffer
         // We directly apply the shifts to avoid needing a buffer
         if let Some(mut extra_bits_reader) = extra_bits_reader {
-            try!(append_extra_bits(
+            append_extra_bits(
                 &mut extra_bits_reader,
                 &mut mix_buf,
                 element_channels,
-                sample_shift
-            ));
+                sample_shift,
+            )?;
         }
 
         for i in 0..num_samples {
@@ -317,7 +317,7 @@ fn decode_audio_element<'a, S: Sample>(
 
         for i in 0..num_samples {
             for j in 0..element_channels as usize {
-                let sample = try!(reader.read_u32(this.config.bit_depth as usize)) as i32;
+                let sample = reader.read_u32(this.config.bit_depth as usize)? as i32;
 
                 let idx = i * this.config.num_channels as usize + channel_index as usize + j;
 
@@ -346,12 +346,12 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
     // 9. If it is greater than 8 the entire symbol is simply encoded in binary
     // after Q.
     let mut q = 0;
-    while q != 9 && try!(reader.read_bit()) == true {
+    while q != 9 && reader.read_bit()? == true {
         q += 1;
     }
 
     if q == 9 {
-        return Ok(try!(reader.read_u32(bps as usize)));
+        return Ok(reader.read_u32(bps as usize)?);
     }
 
     // A modulus of 2^K - 1 is used instead of 2^K. Therefore if K = 1 then
@@ -365,9 +365,9 @@ fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) ->
     // Next we read the remainder which is at most K bits. If it is zero it is
     // stored as K - 1 zeros. Otherwise it is stored in K bits as R + 1. This
     // saves one bit in cases where the remainder is zero.
-    let mut r = try!(reader.read_u32(k - 1));
+    let mut r = reader.read_u32(k - 1)?;
     if r > 0 {
-        let extra_bit = try!(reader.read_bit()) as u32;
+        let extra_bit = reader.read_bit()? as u32;
         r = (r << 1) + extra_bit - 1;
     }
 
@@ -401,7 +401,7 @@ fn rice_decompress<'a>(
         let k = min(k as u8, k_max);
         // See below for info on the m thing
         let m = (1 << k) - 1;
-        let val = try!(decode_rice_symbol(reader, m, k, bps));
+        let val = decode_rice_symbol(reader, m, k, bps)?;
         // The least significant bit of val is the sign bit - the plus is weird tho
         // if val and sgn mod = 0 then nothing happens
         // if one is 1 the lsb = 1
@@ -447,7 +447,7 @@ fn rice_decompress<'a>(
             // let mz = ((1 << k) - 1);
             // End versions
 
-            let zero_block_len = try!(decode_rice_symbol(reader, m, k, 16)) as usize;
+            let zero_block_len = decode_rice_symbol(reader, m, k, 16)? as usize;
 
             if zero_block_len > 0 {
                 if zero_block_len >= buf.len() - i {
@@ -572,7 +572,7 @@ fn append_extra_bits<'a>(
 
     for i in 0..num_samples {
         for j in 0..channels {
-            let extra_bits = try!(reader.read_u16(sample_shift)) as i32;
+            let extra_bits = reader.read_u16(sample_shift)? as i32;
             buf[j][i] = (buf[j][i] << sample_shift) | extra_bits as i32;
         }
     }

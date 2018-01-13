@@ -108,22 +108,20 @@ where
     T: Read + Seek,
 {
     fn new(rdr: T) -> Result<Self, ()> {
-        let caf = try!(CafPacketReader::new(rdr, vec![ChunkType::MagicCookie]).map_err(|_| ()));
+        let caf = CafPacketReader::new(rdr, vec![ChunkType::MagicCookie]).map_err(|_| ())?;
         if caf.audio_desc.format_id != FormatType::AppleLossless {
             return Err(());
         }
         let info = {
-            let cookie = try!(
-                caf.chunks
-                    .iter()
-                    .filter_map(|c| match c {
-                        &CafChunk::MagicCookie(ref d) => Some(d),
-                        _ => None,
-                    })
-                    .next()
-                    .ok_or(())
-            );
-            try!(alac::StreamInfo::from_cookie(&cookie))
+            let cookie = caf.chunks
+                .iter()
+                .filter_map(|c| match c {
+                    &CafChunk::MagicCookie(ref d) => Some(d),
+                    _ => None,
+                })
+                .next()
+                .ok_or(())?;
+            alac::StreamInfo::from_cookie(&cookie)?
         };
         Ok(AlacReader {
             caf: caf,
