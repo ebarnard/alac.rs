@@ -1,5 +1,7 @@
-use mp4parse::{self, AudioCodecSpecific, AudioSampleEntry, CodecType, SampleEntry};
-use std::io::{self, Read, Seek, SeekFrom};
+extern crate mp4parse;
+
+use self::mp4parse::{AudioCodecSpecific, AudioSampleEntry, CodecType, SampleEntry};
+use std::io::{Read, Seek, SeekFrom};
 
 use StreamInfo;
 
@@ -95,14 +97,11 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
         &self.stream_info
     }
 
-    pub fn max_packet_len(&self) -> u32 {
-        *self.sample_sizes.iter().max().unwrap_or(&0)
-    }
-
-    pub fn next_packet_into(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    pub fn next_packet_into(&mut self, buf: &mut Vec<u8>) -> Result<(), ()> {
         let sample_idx = self.sample_idx;
         if sample_idx as usize == self.sample_sizes.len() {
-            return Ok(0);
+            buf.clear();
+            return Ok(());
         }
 
         // Find the current sample to chunk mapping
@@ -120,13 +119,16 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
         // Seek to next chunk offset if starting a new chunk
         if samples_into_chunk == 0 {
             let chunk_idx = sample_to_chunk.first_chunk + chunks_past_first_chunk;
+            let chunk_offset = self.chunk_offsets[chunk_idx as usize];
             self.reader
-                .seek(SeekFrom::Start(self.chunk_offsets[chunk_idx as usize]))?;
+                .seek(SeekFrom::Start(chunk_offset))
+                .map_err(|_| ())?;
         }
 
-        let read_len = self.sample_sizes[sample_idx as usize] as usize;
-        self.reader.read_exact(&mut buf[..read_len])?;
+        let packet_len = self.sample_sizes[sample_idx as usize] as usize;
+        buf.resize(packet_len, 0);
+        self.reader.read_exact(&mut buf[..]).map_err(|_| ())?;
         self.sample_idx += 1;
-        Ok(read_len)
+        Ok(())
     }
 }
