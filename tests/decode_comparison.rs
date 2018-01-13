@@ -2,6 +2,7 @@ extern crate alac;
 extern crate caf;
 extern crate hound;
 
+use alac::StreamInfo;
 use caf::{CafPacketReader, ChunkType, FormatType};
 use caf::chunks::CafChunk;
 use std::fmt;
@@ -10,41 +11,82 @@ use std::io::{Read, Seek};
 
 static ROOT: &'static str = "tests/data/decode_comparison";
 
-static COMPARE_I16: &'static [(&'static str, &'static str)] = &[
+static COMPARE_MP4_I16: &'static [(&'static str, &'static str)] = &[
+    ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a"),
+];
+
+static COMPARE_MP4_I32: &'static [(&'static str, &'static str)] = &[
+    ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a"),
+    ("synth_44100_24_bit.wav", "synth_44100_24_bit_afconvert.m4a"),
+];
+
+static COMPARE_CAF_I16: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf"),
 ];
 
-static COMPARE_I32: &'static [(&'static str, &'static str)] = &[
+static COMPARE_CAF_I32: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf"),
     ("synth_44100_24_bit.wav", "synth_44100_24_bit_afconvert.caf"),
 ];
 
 #[test]
-fn main() {
-    for &(wav, alac) in COMPARE_I16 {
-        compare::<i16>(ROOT, wav, alac);
+#[cfg(feature = "mp4")]
+fn mp4() {
+    for &(wav, alac) in COMPARE_MP4_I16 {
+        compare::<i16, _, _>(ROOT, wav, alac, mp4_open);
     }
-    for &(wav, alac) in COMPARE_I32 {
-        compare::<i32>(ROOT, wav, alac);
+    for &(wav, alac) in COMPARE_MP4_I32 {
+        compare::<i32, _, _>(ROOT, wav, alac, mp4_open);
     }
 }
 
-fn compare<S: Sample>(root: &str, wav: &str, alac: &str) {
+#[cfg(feature = "mp4")]
+fn mp4_open<S: Sample>(f: File) -> Result<(alac::IntoSamples<File, S>, StreamInfo), ()> {
+    let r = alac::Reader::new(f)?;
+    let s = r.stream_info().clone();
+    Ok((r.into_samples(), s))
+}
+
+#[test]
+fn caf() {
+    for &(wav, alac) in COMPARE_CAF_I16 {
+        compare::<i16, _, _>(ROOT, wav, alac, caf_open);
+    }
+    for &(wav, alac) in COMPARE_CAF_I32 {
+        compare::<i32, _, _>(ROOT, wav, alac, caf_open);
+    }
+}
+
+fn caf_open<S: Sample>(f: File) -> Result<(AlacReader<File, S>, StreamInfo), ()> {
+    let r = AlacReader::new(f)?;
+    let s = r.decoder.stream_info().clone();
+    Ok((r, s))
+}
+
+fn compare<S: Sample, E, I: Iterator<Item = Result<S, E>>>(
+    root: &str,
+    wav: &str,
+    alac: &str,
+    alac_open: fn(File) -> Result<(I, StreamInfo), ()>,
+) {
     println!("comparing {} to {}", wav, alac);
 
     let wav = format!("{}/{}", root, wav);
     let alac = format!("{}/{}", root, alac);
 
+    let (mut alac, stream_info) = File::open(alac)
+        .map_err(|_| ())
+        .and_then(alac_open)
+        .expect("failed to open alac");
+
+    let bit_depth = stream_info.bit_depth();
     let mut wav = hound::WavReader::open(wav)
         .expect("failed to open wav")
-        .into_samples::<S>();
-    let mut alac =
-        AlacReader::new(File::open(alac).expect("failed to open caf")).expect("invalid caf");
-    let bit_depth = alac.decoder.stream_info().bit_depth();
+        .into_samples::<S>()
+        .map(|r| r.map(|s| s.hound_left_align(bit_depth)));
 
     for i in 0.. {
-        let wav_sample = wav.next().map(|r| r.map(|s| s.hound_left_align(bit_depth)));
-        match (wav_sample, alac.next()) {
+        match (wav.next(), alac.next()) {
             (Some(Ok(ref w)), Some(Ok(ref a))) if w == a => (),
             (Some(Ok(w)), Some(Ok(a))) => {
                 panic!("sample {} does not match. wav: {}, alac: {}", i, w, a)
@@ -53,8 +95,7 @@ fn compare<S: Sample>(root: &str, wav: &str, alac: &str) {
             (Some(_), None) => panic!("wav longer than alac"),
             (None, Some(_)) => panic!("alac longer than wav"),
             (Some(Err(_)), _) => panic!("wav read error at {}", i),
-            (_, Some(Err(AlacReaderError::Alac))) => panic!("alac read error at {}", i),
-            (_, Some(Err(AlacReaderError::Caf))) => panic!("caf read error at {}", i),
+            (_, Some(Err(_))) => panic!("alac read error at {}", i),
         }
     }
 }

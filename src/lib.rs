@@ -1,7 +1,16 @@
+#[cfg(feature = "mp4")]
+extern crate mp4parse;
+
 mod bitcursor;
 mod dec;
+#[cfg(feature = "mp4")]
+mod mp4;
+#[cfg(any(feature = "mp4"))]
+mod reader;
 
 pub use dec::{Decoder, Sample};
+#[cfg(any(feature = "mp4"))]
+pub use reader::{IntoSamples, Reader, Samples};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamInfo {

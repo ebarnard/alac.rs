@@ -8,6 +8,13 @@ repository = "https://github.com/ebarnard/alac.rs"
 keywords = ["decoder", "audio"]
 license = "MIT/Apache-2.0"
 
+[features]
+default = ["mp4"]
+mp4 = ["mp4parse"]
+
+[dependencies]
+mp4parse = { git = "https://github.com/ebarnard/mp4parse-rust.git", rev = "52044c70f47a4b459ad062969eb749b86197179c", optional = true }
+
 [dev-dependencies]
 caf = "0.1.0"
 hound = "3.3.0"
