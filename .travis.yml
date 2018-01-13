@@ -1,22 +1,22 @@
 sudo: false
 language: rust
 rust:
-- nightly
-- beta
-- stable
-- 1.20.0
-before_script:
-- |
-  pip install 'travis-cargo<0.2' --user &&
-  export PATH=$HOME/.local/bin:$PATH
+  - nightly
+  - beta
+  - stable
+  - 1.20.0
 script:
-- |
-  travis-cargo build &&
-  travis-cargo test &&
-  travis-cargo --only stable doc -- --no-deps
-after_success:
-- travis-cargo --only stable doc-upload
-env:
-  global:
-  - TRAVIS_CARGO_NIGHTLY_FEATURE=""
-  - secure: UlhmvtjXA2qJcxZ8+LbxumDcxr8gd3Ldy5L/WjBZ2WW8xvehqDWbB3a3+ewAXBTn9I6hJZJ+nnLLySyxf2kRnhVjIAGoe6mVLWpacke4brQwA4630nTHTTyukDtlEds65OiZJhGa1ubnmzj1K0/j1hqtYefxii5WEA3xf85NkrLNFQoOiP/9SAnJbmxjOzwPhU9awsTylcwg3+VB2tu2gCKBUrTCtMQQFKOl7hTxr2BgkOYDN9WsvMAZ3cDipusb/HK6lCe/+15nl5wqNTpBStA3g2TzlKcp8k6eEt0G6kC2zfdlUoO+HUqWZ8y+YtYNkMXYhm6odSxRThOkFeiBETjurXHhcfmIBWtj2+eKbQOuoAgXAqiW9pM9VWvpaHkNMmc+QcWCnznTe1+8jgI3IeuolM5ND4QLXskPB4R8SORSFMzatw9At+yXnsWXLX/E0HfpQfNnPFqp9nU8XJUV99foakW28Xe+lDjFSH2OHMbmjNq0tefhuFzYPc0jGPNh9j8D1PiS3CLsETVbu0SK9A/JaLbbdQwwzOsaM86J/gC8k+TZ8u0WvoII/nDskVLVshvtJPj22L9Uaf4EvOzlVzDiBwbPqFpVThBL2/RE4L+dIIcXsO2ahDFYz4jk15+WY1TQvQqU39hza+ZNcv3U+y7ErVvCM5aSd7hDVZUWlMc=
+  - cargo test --all-features --verbose
+  - cargo test --release --all-features --verbose
+before_deploy:
+  - cargo doc --all-features --no-deps --verbose
+deploy:
+  provider: pages
+  skip_cleanup: true
+  github_token:
+    secure: "OxQ8OAt6ocVO0TNjJoI9/wZfsrWT5GAEtDthTmDyGCgeauT4szemL1pXVZZqR/Y6fibiN5OQgQ/cSuaf28Zio1LgWwpGRYnbwKhDVjzNAFQJ7eFm4spvIvSGAj7LRkS+J0qXgh/AixTDNbEr8JF/zhbibGpxiZmvEdFIC62sSU4V7Ue4TWpoZh8ja/YEH1zJXICemvNN21jknFF6vPT/sdrzUTTjFw9r0Lzb9+AnaoJ/N6y017gzsPx6OxpxDzMM5wOsJFg6dU+MXGN+vGvVeP6+3N8rbmVlTKy3f2FV+sX3k6yFOKCUkmGSbv8d41qgu3QOjebMAjKWTVbJO2aF3W34Q/Fx8TzYoqXEHlCloub0c8Nq658GdUAezUJQjLfscxbFUtftZVdROZAGF/TjliHseN7jMvF9KiGBNwEevZLnOBXgxL6xzI/R2Iwlwmy/6ZmM1GtUh/kj5nT8laAaD2/B51MozJ3jF1cByUDUkvPTyYMDAxsU9/2t2RmTlJi/RvdkhKd/kWzRK2u3jbSZtIGyzkiv2XGX4br20agRwc4v6yyyIeEAPrZkV1mlYGWDc6A/JCT1s09ngscSSWrq+J4BvoMbJmKBny7Nu+NRV9uvE2KoYlT977ewY6dE4H+ISa3HpSL9cC6rJxaY61j3fNBTUTa9OElAjgA7ZPuEGBU="
+  local_dir: target/doc/
+  on:
+    branch: master
+    os: linux
+    rust: nightly
