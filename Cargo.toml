@@ -3,9 +3,10 @@ name = "alac"
 version = "0.3.2"
 authors = ["Edward Barnard <eabarnard@gmail.com>"]
 description = "An ALAC decoder in Rust."
+readme = "README.md"
 documentation = "https://docs.rs/alac/0.3.2"
 repository = "https://github.com/ebarnard/alac.rs"
-keywords = ["decoder", "audio"]
+keywords = ["decoder", "audio", "mp4", "m4a", "caf"]
 license = "MIT/Apache-2.0"
 
 [features]
