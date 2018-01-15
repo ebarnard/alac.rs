@@ -19,8 +19,8 @@ impl<R: Read + Seek> Reader<R> {
 
         Ok(Reader {
             packet_buf: Vec::new(),
-            packet_reader: packet_reader,
-            decoder: decoder,
+            packet_reader,
+            decoder,
             samples: Box::new([]),
             sample_len: 0,
             sample_pos: 0,

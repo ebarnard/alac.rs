@@ -77,18 +77,18 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
                 *prev_chunk = first_chunk;
                 Some(SampleToChunk {
                     first_sample: *samples,
-                    first_chunk: first_chunk,
+                    first_chunk,
                     samples_per_chunk: s.samples_per_chunk,
                 })
             })
             .collect();
 
         Ok(Mp4PacketReader {
-            reader: reader,
-            stream_info: stream_info,
-            chunk_offsets: chunk_offsets,
-            sample_sizes: sample_sizes,
-            sample_to_chunk: sample_to_chunk,
+            reader,
+            stream_info,
+            chunk_offsets,
+            sample_sizes,
+            sample_to_chunk,
             sample_idx: 0,
         })
     }

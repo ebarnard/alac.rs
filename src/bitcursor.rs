@@ -13,7 +13,7 @@ pub struct BitCursor<'a> {
 impl<'a> BitCursor<'a> {
     pub fn new(buf: &'a [u8]) -> BitCursor<'a> {
         let mut cursor = BitCursor {
-            buf: buf,
+            buf,
             current: 0,
             current_len: 0,
             current_pos: 0,

@@ -31,8 +31,8 @@ impl<R: Read + Seek> CafPacketReader<R> {
             StreamInfo::from_cookie(&cookie)?
         };
         Ok(CafPacketReader {
-            reader: reader,
-            stream_info: stream_info,
+            reader,
+            stream_info,
         })
     }
 
