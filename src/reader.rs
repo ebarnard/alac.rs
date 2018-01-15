@@ -62,7 +62,8 @@ impl<R: Read + Seek> Reader<R> {
 
         // Decode the next packet
         let samples = self.decoder
-            .decode_packet(&self.packet_buf, &mut self.samples)?;
+            .decode_packet(&self.packet_buf, &mut self.samples)
+            .map_err(|_| ())?;
         self.sample_len = samples.len();
         self.sample_pos = 0;
 

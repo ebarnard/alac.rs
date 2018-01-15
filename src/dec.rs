@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use StreamInfo;
+use {invalid_data, InvalidData, StreamInfo};
 use bitcursor::BitCursor;
 
 pub trait Sample: private::Sealed {
@@ -71,7 +71,7 @@ impl Decoder {
         &mut self,
         packet: &[u8],
         out: &'a mut [S],
-    ) -> Result<&'a [S], ()> {
+    ) -> Result<&'a [S], InvalidData> {
         let mut reader = BitCursor::new(packet);
 
         let mut channel_index = 0;
@@ -94,7 +94,7 @@ impl Decoder {
 
                     // Check that there aren't too many channels in this packet.
                     if channel_index + element_channels > self.config.num_channels {
-                        return Err(());
+                        return Err(invalid_data("packet contains more channels than expected"));
                     }
 
                     let element_samples = decode_audio_element(
@@ -108,7 +108,9 @@ impl Decoder {
                     // Check that the number of samples are consistent within elements of a frame.
                     if let Some(frame_samples) = frame_samples {
                         if frame_samples != element_samples {
-                            return Err(());
+                            return Err(invalid_data(
+                                "all channels in a packet must contain the same number of samples",
+                            ));
                         }
                     } else {
                         frame_samples = Some(element_samples);
@@ -117,8 +119,7 @@ impl Decoder {
                     channel_index += element_channels;
                 }
                 ID_CCE | ID_PCE => {
-                    // These elements are unsupported
-                    return Err(());
+                    return Err(invalid_data("packet cce and pce elements are unsupported"));
                 }
                 ID_DSE => {
                     // data stream element -- parse but ignore
@@ -162,7 +163,7 @@ impl Decoder {
 
                     // Check that there were as many channels in the packet as there ought to be.
                     if channel_index != self.config.num_channels {
-                        return Err(());
+                        return Err(invalid_data("packet contains fewer channels than expected"));
                     }
 
                     let frame_samples = frame_samples.unwrap_or(self.config.frame_length);
@@ -181,21 +182,23 @@ fn decode_audio_element<'a, S: Sample>(
     out: &mut [S],
     channel_index: u8,
     element_channels: u8,
-) -> Result<u32, ()> {
+) -> Result<u32, InvalidData> {
     // Unused
     let _element_instance_tag = reader.read_u8(4)?;
 
     let unused = reader.read_u16(12)?;
     if unused != 0 {
-        return Err(()); // Unused header data not 0
+        return Err(invalid_data("unused channel header bits must be zero"));
     }
 
     // read the 1-bit "partial frame" flag, 2-bit "shift-off" flag & 1-bit "escape" flag
     let partial_frame = reader.read_bit()?;
 
     let sample_shift_bytes = reader.read_u8(2)?;
-    if sample_shift_bytes >= 3 {
-        return Err(()); // must be 1 or 2
+    if sample_shift_bytes > 2 {
+        return Err(invalid_data(
+            "channel sample shift must not be greater than 16",
+        ));
     }
     let sample_shift = sample_shift_bytes * 8;
 
@@ -207,7 +210,7 @@ fn decode_audio_element<'a, S: Sample>(
         let num_samples = reader.read_u32(32)?;
 
         if num_samples > this.config.frame_length {
-            return Err(());
+            return Err(invalid_data("channel contains more samples than expected"));
         }
 
         num_samples as usize
@@ -222,7 +225,7 @@ fn decode_audio_element<'a, S: Sample>(
         let chan_bits = this.config.bit_depth - sample_shift + element_channels - 1;
         if chan_bits > 32 {
             // unimplemented - could in theory be 33
-            return Err(());
+            return Err(invalid_data("channel bit depth cannot be greater than 32"));
         }
 
         // compressed frame, read rest of parameters
@@ -271,7 +274,7 @@ fn decode_audio_element<'a, S: Sample>(
                 // the special "numActive == 31" mode can be done in-place
                 lpc_predict_order_31(mix_buf[i], chan_bits);
             } else if lpc_mode[i as usize] > 0 {
-                return Err(());
+                return Err(invalid_data("invalid lpc mode"));
             }
 
             // We have a seperate function for this
@@ -312,7 +315,9 @@ fn decode_audio_element<'a, S: Sample>(
         // straight to the output buffer.
 
         if sample_shift != 0 {
-            return Err(());
+            return Err(invalid_data(
+                "sample shift cannot be greater than zero for uncompressed channels",
+            ));
         }
 
         for i in 0..num_samples {
@@ -330,7 +335,12 @@ fn decode_audio_element<'a, S: Sample>(
 }
 
 #[inline]
-fn decode_rice_symbol<'a>(reader: &mut BitCursor<'a>, m: u32, k: u8, bps: u8) -> Result<u32, ()> {
+fn decode_rice_symbol<'a>(
+    reader: &mut BitCursor<'a>,
+    m: u32,
+    k: u8,
+    bps: u8,
+) -> Result<u32, InvalidData> {
     // Rice coding encodes a symbol S as the product of a quotient Q and a
     // modulus M added to a remainder R. Q is encoded in unary (Q 1s followed
     // by a 0) and R in binary in K bits.
@@ -384,7 +394,7 @@ fn rice_decompress<'a>(
     buf: &mut [i32],
     bps: u8,
     pb_factor: u16,
-) -> Result<(), ()> {
+) -> Result<(), InvalidData> {
     #[inline(always)]
     fn log_2(x: u32) -> u32 {
         31 - (x | 1).leading_zeros()
@@ -451,7 +461,9 @@ fn rice_decompress<'a>(
 
             if zero_block_len > 0 {
                 if zero_block_len >= buf.len() - i {
-                    return Err(());
+                    return Err(invalid_data(
+                        "zero block contains too many samples for channel",
+                    ));
                 }
                 // TODO: Use memset equivalent here.
                 let buf = &mut buf[i + 1..];
@@ -563,7 +575,7 @@ fn append_extra_bits<'a>(
     buf: &mut [&mut [i32]; 2],
     channels: u8,
     sample_shift: u8,
-) -> Result<(), ()> {
+) -> Result<(), InvalidData> {
     debug_assert_eq!(buf[0].len(), buf[1].len());
 
     let channels = min(channels as usize, buf.len());

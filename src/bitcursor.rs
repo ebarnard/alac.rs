@@ -10,6 +10,9 @@ pub struct BitCursor<'a> {
     current_pos: u8,
 }
 
+#[derive(Debug)]
+pub struct NotEnoughData;
+
 impl<'a> BitCursor<'a> {
     pub fn new(buf: &'a [u8]) -> BitCursor<'a> {
         let mut cursor = BitCursor {
@@ -23,7 +26,7 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    pub fn read_bit(&mut self) -> Result<bool, ()> {
+    pub fn read_bit(&mut self) -> Result<bool, NotEnoughData> {
         Ok(match self.read_u32(1)? {
             0 => false,
             1 => true,
@@ -32,19 +35,19 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    pub fn read_u8(&mut self, bits: usize) -> Result<u8, ()> {
+    pub fn read_u8(&mut self, bits: usize) -> Result<u8, NotEnoughData> {
         assert!(bits <= 8);
         Ok(self.read_u32(bits)? as u8)
     }
 
     #[inline]
-    pub fn read_u16(&mut self, bits: usize) -> Result<u16, ()> {
+    pub fn read_u16(&mut self, bits: usize) -> Result<u16, NotEnoughData> {
         assert!(bits <= 16);
         Ok(self.read_u32(bits)? as u16)
     }
 
     #[inline]
-    pub fn read_u32(&mut self, bits: usize) -> Result<u32, ()> {
+    pub fn read_u32(&mut self, bits: usize) -> Result<u32, NotEnoughData> {
         assert!(bits <= 32);
         self.check_enough_bits(bits)?;
 
@@ -64,7 +67,7 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    pub fn skip(&mut self, bits: usize) -> Result<(), ()> {
+    pub fn skip(&mut self, bits: usize) -> Result<(), NotEnoughData> {
         self.check_enough_bits(bits)?;
 
         if let Some(skip_buf_bits) = bits.checked_sub(U32_BITS - self.current_pos as usize) {
@@ -80,7 +83,7 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    pub fn skip_to_byte(&mut self) -> Result<(), ()> {
+    pub fn skip_to_byte(&mut self) -> Result<(), NotEnoughData> {
         let pos_into_byte = self.current_pos & 7;
         if pos_into_byte != 0 {
             self.skip(8 - pos_into_byte as usize)
@@ -90,11 +93,11 @@ impl<'a> BitCursor<'a> {
     }
 
     #[inline]
-    fn check_enough_bits(&self, bits: usize) -> Result<(), ()> {
+    fn check_enough_bits(&self, bits: usize) -> Result<(), NotEnoughData> {
         if bits <= (self.buf.len() << 3) + (self.current_len - self.current_pos) as usize {
             Ok(())
         } else {
-            Err(())
+            Err(NotEnoughData)
         }
     }
 

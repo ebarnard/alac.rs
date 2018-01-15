@@ -11,6 +11,40 @@ pub use dec::{Decoder, Sample};
 #[cfg(any(feature = "caf", feature = "mp4"))]
 pub use reader::{IntoSamples, Reader, Samples};
 
+use std::error;
+use std::fmt;
+
+/// An error returned from the `Decoder::decode_packet` function or when decoding a `StreamInfo`.
+///
+/// When decoding a packet this error can occur if the packet is invalid or corrupted, or if it has
+/// been truncated.
+#[derive(Debug)]
+pub struct InvalidData {
+    message: &'static str,
+}
+
+impl error::Error for InvalidData {
+    fn description(&self) -> &str {
+        self.message
+    }
+}
+
+impl fmt::Display for InvalidData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.message)
+    }
+}
+
+impl From<bitcursor::NotEnoughData> for InvalidData {
+    fn from(_: bitcursor::NotEnoughData) -> InvalidData {
+        invalid_data("packet is not long enough")
+    }
+}
+
+fn invalid_data(message: &'static str) -> InvalidData {
+    InvalidData { message }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StreamInfo {
     frame_length: u32,
@@ -27,7 +61,7 @@ pub struct StreamInfo {
 }
 
 impl StreamInfo {
-    pub fn from_cookie(mut cookie: &[u8]) -> Result<StreamInfo, ()> {
+    pub fn from_cookie(mut cookie: &[u8]) -> Result<StreamInfo, InvalidData> {
         // For historical reasons the decoder needs to be resilient to magic cookies vended by older encoders.
         // As specified in the ALACMagicCookieDescription.txt document, there may be additional data encapsulating
         // the ALACSpecificConfig. This would consist of format ('frma') and 'alac' atoms which precede the
@@ -36,7 +70,7 @@ impl StreamInfo {
 
         // Make sure we stay in bounds
         if cookie.len() < 24 {
-            return Err(());
+            return Err(invalid_data("magic cookie is not the correct length"));
         };
 
         // skip format ('frma') atom if present
@@ -51,7 +85,7 @@ impl StreamInfo {
 
         // Make sure cookie is long enough
         if cookie.len() < 24 {
-            return Err(());
+            return Err(invalid_data("magic cookie is not the correct length"));
         }
 
         Ok(StreamInfo {
@@ -69,12 +103,13 @@ impl StreamInfo {
         })
     }
 
-    pub fn from_sdp_format_parameters(params: &str) -> Result<StreamInfo, ()> {
+    pub fn from_sdp_format_parameters(params: &str) -> Result<StreamInfo, InvalidData> {
         use std::str::FromStr;
 
-        fn parse<T: FromStr>(val: Option<&str>) -> Result<T, ()> {
-            let val = val.ok_or(())?;
-            val.parse().map_err(|_| ())
+        fn parse<T: FromStr>(val: Option<&str>) -> Result<T, InvalidData> {
+            let val = val.ok_or(invalid_data("too few sdp format parameters"))?;
+            val.parse()
+                .map_err(|_| invalid_data("invalid sdp format parameter"))
         }
 
         let mut params = params.split_whitespace();
@@ -95,7 +130,7 @@ impl StreamInfo {
 
         // Check we haven't been passed too many values
         if params.next().is_some() {
-            return Err(());
+            return Err(invalid_data("too many sdp format parameters"));
         }
 
         Ok(config)

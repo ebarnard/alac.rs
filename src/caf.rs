@@ -28,7 +28,7 @@ impl<R: Read + Seek> CafPacketReader<R> {
                 })
                 .next()
                 .ok_or(())?;
-            StreamInfo::from_cookie(&cookie)?
+            StreamInfo::from_cookie(&cookie).map_err(|_| ())?
         };
         Ok(CafPacketReader {
             reader,
