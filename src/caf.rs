@@ -1,49 +1,55 @@
 extern crate caf;
 
-use self::caf::{ChunkType, FormatType};
+use self::caf::{CafError, ChunkType, FormatType};
 use self::caf::chunks::CafChunk;
-use std::io::{Read, Seek};
+use std::io::{ErrorKind, Read, Seek};
+use std::mem;
 
-use StreamInfo;
+use {invalid_data, ReadError};
+
+fn caf_error(msg: &'static str) -> ReadError {
+    ReadError::Format("caf", invalid_data(msg))
+}
+
+impl From<CafError> for ReadError {
+    fn from(err: CafError) -> ReadError {
+        match err {
+            CafError::Io(ref err) if err.kind() == ErrorKind::UnexpectedEof => {
+                caf_error("unexpected end of stream")
+            }
+            CafError::Io(err) => ReadError::Io(err),
+            CafError::FromUtf8(_) => caf_error("bytes are not valid utf8"),
+            CafError::NotCaf => caf_error("not a caf file"),
+            CafError::UnsupportedChunkType(_) => caf_error("unsupported chunk type"),
+        }
+    }
+}
 
 pub struct CafPacketReader<R: Read + Seek> {
     reader: caf::CafPacketReader<R>,
-    stream_info: StreamInfo,
 }
 
 impl<R: Read + Seek> CafPacketReader<R> {
-    pub fn new(reader: R) -> Result<CafPacketReader<R>, ()> {
-        let reader =
-            caf::CafPacketReader::new(reader, vec![ChunkType::MagicCookie]).map_err(|_| ())?;
+    pub fn new(reader: R) -> Result<(CafPacketReader<R>, Vec<u8>), ReadError> {
+        let mut reader = caf::CafPacketReader::new(reader, vec![ChunkType::MagicCookie])?;
         if reader.audio_desc.format_id != FormatType::AppleLossless {
-            return Err(());
+            return Err(caf_error("does not contain alac data"));
         }
-        let stream_info = {
-            let cookie = reader
-                .chunks
-                .iter()
-                .filter_map(|c| match c {
-                    &CafChunk::MagicCookie(ref d) => Some(d),
-                    _ => None,
-                })
-                .next()
-                .ok_or(())?;
-            StreamInfo::from_cookie(&cookie).map_err(|_| ())?
-        };
-        Ok(CafPacketReader {
-            reader,
-            stream_info,
-        })
+        let magic_cookie = mem::replace(&mut reader.chunks, Vec::new())
+            .into_iter()
+            .filter_map(|c| match c {
+                CafChunk::MagicCookie(d) => Some(d),
+                _ => None,
+            })
+            .next()
+            .ok_or(caf_error("missing magic cookie"))?;
+        Ok((CafPacketReader { reader }, magic_cookie))
     }
 
-    pub fn stream_info(&self) -> &StreamInfo {
-        &self.stream_info
-    }
-
-    pub fn next_packet_into(&mut self, buf: &mut Vec<u8>) -> Result<(), ()> {
+    pub fn next_packet_into(&mut self, buf: &mut Vec<u8>) -> Result<(), ReadError> {
         if let Some(packet_len) = self.reader.next_packet_size() {
             buf.resize(packet_len, 0);
-            self.reader.read_packet_into(&mut buf[..]).map_err(|_| ())?;
+            self.reader.read_packet_into(&mut buf[..])?;
         } else {
             buf.clear();
         }

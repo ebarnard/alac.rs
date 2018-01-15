@@ -9,7 +9,7 @@ mod reader;
 
 pub use dec::{Decoder, Sample};
 #[cfg(any(feature = "caf", feature = "mp4"))]
-pub use reader::{IntoSamples, Reader, Samples};
+pub use reader::{IntoSamples, ReadError, Reader, Samples};
 
 use std::error;
 use std::fmt;
