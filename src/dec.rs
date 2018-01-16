@@ -3,8 +3,9 @@ use std::cmp::min;
 use {invalid_data, InvalidData, StreamInfo};
 use bitcursor::BitCursor;
 
+/// A type that can be used to represent audio samples.
 pub trait Sample: private::Sealed {
-    /// Constructs `Self` from a right-aligned `bits` bit sample
+    /// Constructs `Self` from a right-aligned sample with bit depth `bits`.
     fn from_decoder(sample: i32, bits: u8) -> Self;
 
     fn bits() -> u8;
@@ -41,6 +42,7 @@ mod private {
     impl Sealed for i32 {}
 }
 
+/// An ALAC packet decoder.
 pub struct Decoder {
     config: StreamInfo,
     buf: Box<[i32]>,
@@ -56,6 +58,7 @@ const ID_FIL: u8 = 6; // filler element
 const ID_END: u8 = 7; // frame end
 
 impl Decoder {
+    /// Creates a `Decoder` for a stream described by the `StreamInfo`.
     pub fn new(config: StreamInfo) -> Decoder {
         Decoder {
             buf: vec![0; config.frame_length as usize * 2].into_boxed_slice(),
@@ -63,10 +66,17 @@ impl Decoder {
         }
     }
 
+    /// Returns the `StreamInfo` used to create this decoder.
     pub fn stream_info(&self) -> &StreamInfo {
         &self.config
     }
 
+    /// Decodes an ALAC packet into `out`.
+    ///
+    /// Channels are returned interleaved, e.g. for a stereo packet `out` would contains samples in
+    /// the order `[left, right, left, right, ..]`.
+    ///
+    /// Panics if `out` is shorter than `StreamInfo::max_samples_per_packet`.
     pub fn decode_packet<'a, S: Sample>(
         &mut self,
         packet: &[u8],

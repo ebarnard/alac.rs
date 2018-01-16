@@ -5,6 +5,10 @@ use std::marker::PhantomData;
 
 use {Decoder, InvalidData, Sample, StreamInfo};
 
+/// An error when reading an ALAC file using a `Reader`.
+///
+/// A `ReadError::Decoder` will occur if the current packet is invalid. If more samples are read
+/// the reader will skip to the next packet.
 #[derive(Debug)]
 pub enum ReadError {
     Io(io::Error),
@@ -46,6 +50,8 @@ impl From<io::Error> for ReadError {
     }
 }
 
+/// An ALAC reader and decoder supporting `mp4` and `caf` files (if the respective Cargo features
+/// are enabled).
 pub struct Reader<R: Read + Seek> {
     packet_buf: Vec<u8>,
     packet_reader: PacketReader<R>,
@@ -56,6 +62,7 @@ pub struct Reader<R: Read + Seek> {
 }
 
 impl<R: Read + Seek> Reader<R> {
+    /// Attempts to create a `Reader` from a seekable byte stream.
     pub fn new(reader: R) -> Result<Reader<R>, ReadError> {
         let (packet_reader, magic_cookie) = PacketReader::new(reader)?;
         let stream_info = StreamInfo::from_cookie(&magic_cookie).map_err(ReadError::Decoder)?;
@@ -70,10 +77,18 @@ impl<R: Read + Seek> Reader<R> {
         })
     }
 
+    /// Returns a `StreamInfo` describing the ALAC stream in this file.
     pub fn stream_info(&self) -> &StreamInfo {
         self.decoder.stream_info()
     }
 
+    /// Returns an iterator over the samples in the ALAC stream.
+    ///
+    /// Channels are interleaved, e.g. for a stereo stream they would be yielded in the order
+    /// `[left, right, left, right, ..]`.
+    ///
+    /// If this iterator is dropped and recreated it will resume yielding samples at the position
+    /// of the dropped iterator.
     pub fn samples<'a, S: 'a + Sample>(&'a mut self) -> Samples<'a, R, S> {
         Samples {
             reader: self,
@@ -81,6 +96,7 @@ impl<R: Read + Seek> Reader<R> {
         }
     }
 
+    /// Same as samples, but takes ownership of the `Reader`.
     pub fn into_samples<S: Sample>(self) -> IntoSamples<R, S> {
         IntoSamples {
             reader: self,
@@ -129,6 +145,7 @@ impl<R: Read + Seek> Reader<R> {
     }
 }
 
+/// An iterator that yields samples of type `S` read from a `Reader`.
 pub struct Samples<'a, R: 'a + Read + Seek, S: 'a> {
     reader: &'a mut Reader<R>,
     phantom: PhantomData<Box<[S]>>,
@@ -142,6 +159,7 @@ impl<'a, R: 'a + Read + Seek, S: Sample> Iterator for Samples<'a, R, S> {
     }
 }
 
+/// An iterator that yields samples of type `S` read from a `Reader`.
 pub struct IntoSamples<R: Read + Seek, S> {
     reader: Reader<R>,
     phantom: PhantomData<Box<[S]>>,

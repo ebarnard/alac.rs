@@ -14,7 +14,7 @@ pub use reader::{IntoSamples, ReadError, Reader, Samples};
 use std::error;
 use std::fmt;
 
-/// An error returned from the `Decoder::decode_packet` function or when decoding a `StreamInfo`.
+/// An error indicating user-provided data is invalid.
 ///
 /// When decoding a packet this error can occur if the packet is invalid or corrupted, or if it has
 /// been truncated.
@@ -45,6 +45,7 @@ fn invalid_data(message: &'static str) -> InvalidData {
     InvalidData { message }
 }
 
+/// Codec initialisation parameters for an ALAC stream.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StreamInfo {
     frame_length: u32,
@@ -61,6 +62,8 @@ pub struct StreamInfo {
 }
 
 impl StreamInfo {
+    /// Creates a `StreamInfo` from a magic cookie. This is often stored in the header of a
+    /// container format.
     pub fn from_cookie(mut cookie: &[u8]) -> Result<StreamInfo, InvalidData> {
         // For historical reasons the decoder needs to be resilient to magic cookies vended by older encoders.
         // As specified in the ALACMagicCookieDescription.txt document, there may be additional data encapsulating
@@ -103,6 +106,7 @@ impl StreamInfo {
         })
     }
 
+    /// Creates a `StreamInfo` from SDP format specific parameters, i.e. the `fmtp` attribute.
     pub fn from_sdp_format_parameters(params: &str) -> Result<StreamInfo, InvalidData> {
         use std::str::FromStr;
 
