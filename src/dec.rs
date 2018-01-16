@@ -58,8 +58,8 @@ const ID_END: u8 = 7; // frame end
 impl Decoder {
     pub fn new(config: StreamInfo) -> Decoder {
         Decoder {
-            config,
             buf: vec![0; config.frame_length as usize * 2].into_boxed_slice(),
+            config,
         }
     }
 

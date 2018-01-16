@@ -45,7 +45,7 @@ fn invalid_data(message: &'static str) -> InvalidData {
     InvalidData { message }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StreamInfo {
     frame_length: u32,
     compatible_version: u8,
