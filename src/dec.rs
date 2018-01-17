@@ -4,7 +4,7 @@ use {invalid_data, InvalidData, StreamInfo};
 use bitcursor::BitCursor;
 
 /// A type that can be used to represent audio samples.
-pub trait Sample: private::Sealed {
+pub trait Sample: Copy + private::Sealed {
     /// Constructs `Self` from a right-aligned sample with bit depth `bits`.
     fn from_decoder(sample: i32, bits: u8) -> Self;
 
@@ -73,8 +73,8 @@ impl Decoder {
 
     /// Decodes an ALAC packet into `out`.
     ///
-    /// Channels are returned interleaved, e.g. for a stereo packet `out` would contains samples in
-    /// the order `[left, right, left, right, ..]`.
+    /// Channels are interleaved, e.g. for a stereo packet `out` would contains samples in the
+    /// order `[left, right, left, right, ..]`.
     ///
     /// Panics if `out` is shorter than `StreamInfo::max_samples_per_packet`.
     pub fn decode_packet<'a, S: Sample>(

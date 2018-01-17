@@ -56,9 +56,6 @@ pub struct Reader<R: Read + Seek> {
     packet_buf: Vec<u8>,
     packet_reader: PacketReader<R>,
     decoder: Decoder,
-    samples: Box<[i32]>,
-    sample_len: usize,
-    sample_pos: usize,
 }
 
 impl<R: Read + Seek> Reader<R> {
@@ -71,9 +68,6 @@ impl<R: Read + Seek> Reader<R> {
             packet_buf: Vec::new(),
             packet_reader,
             decoder: Decoder::new(stream_info),
-            samples: Box::new([]),
-            sample_len: 0,
-            sample_pos: 0,
         })
     }
 
@@ -86,31 +80,27 @@ impl<R: Read + Seek> Reader<R> {
     ///
     /// Channels are interleaved, e.g. for a stereo stream they would be yielded in the order
     /// `[left, right, left, right, ..]`.
-    ///
-    /// If this iterator is dropped and recreated it will resume yielding samples at the position
-    /// of the dropped iterator.
-    pub fn samples<'a, S: 'a + Sample>(&'a mut self) -> Samples<'a, R, S> {
+    pub fn into_samples<S: Sample>(self) -> Samples<R, S> {
         Samples {
             reader: self,
-            phantom: PhantomData,
+            samples: Vec::new(),
+            sample_len: 0,
+            sample_pos: 0,
         }
     }
 
-    /// Same as samples, but takes ownership of the `Reader`.
-    pub fn into_samples<S: Sample>(self) -> IntoSamples<R, S> {
-        IntoSamples {
+    /// Returns an iterator-like type that decodes packets into a user-provided buffer.
+    pub fn into_packets<S: Sample>(self) -> Packets<R, S> {
+        Packets {
             reader: self,
             phantom: PhantomData,
         }
     }
 
-    fn decode_next_packet(&mut self) -> Result<Option<()>, ReadError> {
-        // Allocate sample buffer if required
-        if self.samples.is_empty() {
-            let max_samples = self.decoder.stream_info().max_samples_per_packet() as usize;
-            self.samples = vec![0; max_samples].into();
-        }
-
+    fn decode_next_packet_into<'a, S: Sample>(
+        &mut self,
+        out: &'a mut [S],
+    ) -> Result<Option<&'a [S]>, ReadError> {
         // Read the next packet
         self.packet_reader.next_packet_into(&mut self.packet_buf)?;
         if self.packet_buf.is_empty() {
@@ -119,57 +109,78 @@ impl<R: Read + Seek> Reader<R> {
 
         // Decode the next packet
         let samples = self.decoder
-            .decode_packet(&self.packet_buf, &mut self.samples)
+            .decode_packet(&self.packet_buf, out)
             .map_err(|err| ReadError::Decoder(err))?;
-        self.sample_len = samples.len();
-        self.sample_pos = 0;
 
-        Ok(Some(()))
+        if samples.len() == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(samples))
+        }
     }
+}
 
-    fn next_sample<S: Sample>(&mut self) -> Option<Result<S, ReadError>> {
+/// An iterator that yields samples of type `S` read from a `Reader`.
+pub struct Samples<R: Read + Seek, S> {
+    reader: Reader<R>,
+    samples: Vec<S>,
+    sample_len: usize,
+    sample_pos: usize,
+}
+
+impl<R: Read + Seek, S: Sample> Samples<R, S> {
+    /// Returns a `StreamInfo` describing the ALAC stream in this file.
+    pub fn stream_info(&self) -> &StreamInfo {
+        self.reader.stream_info()
+    }
+}
+
+impl<R: Read + Seek, S: Sample> Iterator for Samples<R, S> {
+    type Item = Result<S, ReadError>;
+
+    fn next(&mut self) -> Option<Result<S, ReadError>> {
+        // Allocate sample buffer if required
+        if self.samples.is_empty() {
+            let max_samples = self.stream_info().max_samples_per_packet() as usize;
+            self.samples = vec![S::from_decoder(0, 16); max_samples];
+        }
+
+        // Decode the next packet if we're at the end of the current one.
         if self.sample_pos == self.sample_len {
-            match self.decode_next_packet() {
-                Ok(Some(_)) => (),
+            self.sample_len = match self.reader.decode_next_packet_into(&mut self.samples) {
+                Ok(Some(s)) => s.len(),
                 Ok(None) => return None,
                 Err(e) => return Some(Err(e)),
-            }
+            };
+            self.sample_pos = 0;
         }
+
         let sample_pos = self.sample_pos;
         self.sample_pos += 1;
-        let bit_depth = self.decoder.stream_info().bit_depth();
-        Some(Ok(S::from_decoder(
-            self.samples[sample_pos] >> (32 - bit_depth),
-            bit_depth,
-        )))
+        Some(Ok(self.samples[sample_pos]))
     }
 }
 
-/// An iterator that yields samples of type `S` read from a `Reader`.
-pub struct Samples<'a, R: 'a + Read + Seek, S: 'a> {
-    reader: &'a mut Reader<R>,
-    phantom: PhantomData<Box<[S]>>,
-}
-
-impl<'a, R: 'a + Read + Seek, S: Sample> Iterator for Samples<'a, R, S> {
-    type Item = Result<S, ReadError>;
-
-    fn next(&mut self) -> Option<Result<S, ReadError>> {
-        self.reader.next_sample()
-    }
-}
-
-/// An iterator that yields samples of type `S` read from a `Reader`.
-pub struct IntoSamples<R: Read + Seek, S> {
+/// An iterator-like type that decodes packets into a user-provided buffer.
+pub struct Packets<R: Read + Seek, S> {
     reader: Reader<R>,
-    phantom: PhantomData<Box<[S]>>,
+    phantom: PhantomData<[S]>,
 }
 
-impl<R: Read + Seek, S: Sample> Iterator for IntoSamples<R, S> {
-    type Item = Result<S, ReadError>;
+impl<R: Read + Seek, S: Sample> Packets<R, S> {
+    /// Returns a `StreamInfo` describing the ALAC stream in this file.
+    pub fn stream_info(&self) -> &StreamInfo {
+        self.reader.stream_info()
+    }
 
-    fn next(&mut self) -> Option<Result<S, ReadError>> {
-        self.reader.next_sample()
+    /// Reads the next packet and decodes it into `out`.
+    ///
+    /// Channels are interleaved, e.g. for a stereo packet `out` would contains samples in the
+    /// order `[left, right, left, right, ..]`.
+    ///
+    /// Panics if `out` is shorter than `StreamInfo::max_samples_per_packet`.
+    pub fn next_into<'a>(&mut self, out: &'a mut [S]) -> Result<Option<&'a [S]>, ReadError> {
+        self.reader.decode_next_packet_into(out)
     }
 }
 
