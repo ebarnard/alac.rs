@@ -3,10 +3,10 @@ extern crate mp4parse;
 use self::mp4parse::{AudioCodecSpecific, AudioSampleEntry, CodecType, Error, SampleEntry};
 use std::io::{ErrorKind, Read, Seek, SeekFrom};
 
-use {invalid_data, ReadError};
+use {invalid_data, Format, ReadError};
 
 fn mp4_error(msg: &'static str) -> ReadError {
-    ReadError::Format("mp4", invalid_data(msg))
+    ReadError::Format(Format::Mp4, invalid_data(msg))
 }
 
 impl From<Error> for ReadError {

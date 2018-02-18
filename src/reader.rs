@@ -5,6 +5,17 @@ use std::marker::PhantomData;
 
 use {Decoder, InvalidData, Sample, StreamInfo};
 
+/// The format of an ALAC file.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Format {
+    #[cfg(feature = "caf")]
+    Caf,
+    #[cfg(feature = "mp4")]
+    Mp4,
+    #[doc(hidden)]
+    __Nonexhaustive,
+}
+
 /// An error when reading an ALAC file using a `Reader`.
 ///
 /// A `ReadError::Decoder` will occur if the current packet is invalid. If more samples are read
@@ -12,7 +23,8 @@ use {Decoder, InvalidData, Sample, StreamInfo};
 #[derive(Debug)]
 pub enum ReadError {
     Io(io::Error),
-    Format(&'static str, InvalidData),
+    UnsupportedFormat,
+    Format(Format, InvalidData),
     Decoder(InvalidData),
 }
 
@@ -20,17 +32,19 @@ impl error::Error for ReadError {
     fn description(&self) -> &str {
         match *self {
             ReadError::Io(_) => "IO error",
+            ReadError::UnsupportedFormat => "unsupported format",
             ReadError::Format(_, _) => "format error",
             ReadError::Decoder(_) => "decoder error",
         }
     }
 
     fn cause(&self) -> Option<&error::Error> {
-        Some(match *self {
-            ReadError::Io(ref err) => err,
-            ReadError::Format(_, ref err) => err,
-            ReadError::Decoder(ref err) => err,
-        })
+        match *self {
+            ReadError::Io(ref err) => Some(err),
+            ReadError::UnsupportedFormat => return None,
+            ReadError::Format(_, ref err) => Some(err),
+            ReadError::Decoder(ref err) => Some(err),
+        }
     }
 }
 
@@ -38,7 +52,8 @@ impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             ReadError::Io(ref err) => write!(f, "IO error: {}", err),
-            ReadError::Format(format, ref err) => write!(f, "{} error: {}", format, err),
+            ReadError::UnsupportedFormat => write!(f, "unsupported format"),
+            ReadError::Format(format, ref err) => write!(f, "{:?} error: {}", format, err),
             ReadError::Decoder(ref err) => write!(f, "decoder error: {}", err),
         }
     }
@@ -69,6 +84,11 @@ impl<R: Read + Seek> Reader<R> {
             packet_reader,
             decoder: Decoder::new(stream_info),
         })
+    }
+
+    /// Returns the format of this ALAC file.
+    pub fn format(&self) -> Format {
+        self.packet_reader.format()
     }
 
     /// Returns a `StreamInfo` describing the ALAC stream in this file.
@@ -129,6 +149,11 @@ pub struct Samples<R: Read + Seek, S> {
 }
 
 impl<R: Read + Seek, S: Sample> Samples<R, S> {
+    /// Returns the format of this ALAC file.
+    pub fn format(&self) -> Format {
+        self.reader.format()
+    }
+
     /// Returns a `StreamInfo` describing the ALAC stream in this file.
     pub fn stream_info(&self) -> &StreamInfo {
         self.reader.stream_info()
@@ -168,6 +193,11 @@ pub struct Packets<R: Read + Seek, S> {
 }
 
 impl<R: Read + Seek, S: Sample> Packets<R, S> {
+    /// Returns the format of this ALAC file.
+    pub fn format(&self) -> Format {
+        self.reader.format()
+    }
+
     /// Returns a `StreamInfo` describing the ALAC stream in this file.
     pub fn stream_info(&self) -> &StreamInfo {
         self.reader.stream_info()
@@ -198,23 +228,31 @@ enum PacketReader<R: Read + Seek> {
 
 impl<R: Read + Seek> PacketReader<R> {
     fn new(mut reader: R) -> Result<(PacketReader<R>, Vec<u8>), ReadError> {
-        let mut magic = [0; 4];
+        let mut magic = [0; 8];
         reader.read_exact(&mut magic)?;
-        reader.seek(SeekFrom::Current(-4))?;
+        reader.seek(SeekFrom::Current(-(magic.len() as i64)))?;
 
-        match &magic[..] {
+        match (&magic[0..4], &magic[4..8]) {
             #[cfg(feature = "caf")]
-            b"caff" => {
+            (b"caff", _) => {
                 let (reader, magic_cookie) = CafPacketReader::new(reader)?;
                 Ok((PacketReader::Caf(reader), magic_cookie))
             }
             #[cfg(feature = "mp4")]
-            _ => {
+            (_, b"ftyp") => {
                 let (reader, magic_cookie) = Mp4PacketReader::new(reader)?;
                 Ok((PacketReader::Mp4(reader), magic_cookie))
             }
-            #[cfg(not(feature = "mp4"))]
-            _ => Err(ReadError::Format("format", "unknown format")),
+            _ => Err(ReadError::UnsupportedFormat),
+        }
+    }
+
+    fn format(&self) -> Format {
+        match *self {
+            #[cfg(feature = "caf")]
+            PacketReader::Caf(_) => Format::Caf,
+            #[cfg(feature = "mp4")]
+            PacketReader::Mp4(_) => Format::Mp4,
         }
     }
 

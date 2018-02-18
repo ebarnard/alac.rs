@@ -5,10 +5,10 @@ use self::caf::chunks::CafChunk;
 use std::io::{ErrorKind, Read, Seek};
 use std::mem;
 
-use {invalid_data, ReadError};
+use {invalid_data, Format, ReadError};
 
 fn caf_error(msg: &'static str) -> ReadError {
-    ReadError::Format("caf", invalid_data(msg))
+    ReadError::Format(Format::Caf, invalid_data(msg))
 }
 
 impl From<CafError> for ReadError {
