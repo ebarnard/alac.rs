@@ -190,8 +190,10 @@ use caf::CafPacketReader;
 use mp4::Mp4PacketReader;
 
 enum PacketReader<R: Read + Seek> {
-    #[cfg(feature = "caf")] Caf(CafPacketReader<R>),
-    #[cfg(feature = "mp4")] Mp4(Mp4PacketReader<R>),
+    #[cfg(feature = "caf")]
+    Caf(CafPacketReader<R>),
+    #[cfg(feature = "mp4")]
+    Mp4(Mp4PacketReader<R>),
 }
 
 impl<R: Read + Seek> PacketReader<R> {

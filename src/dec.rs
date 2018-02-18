@@ -177,7 +177,7 @@ impl Decoder {
                     }
 
                     let frame_samples = frame_samples.unwrap_or(self.config.frame_length);
-                    return Ok((&out[..frame_samples as usize * channel_index as usize]));
+                    return Ok(&out[..frame_samples as usize * channel_index as usize]);
                 }
                 // `tag` is 3 bits long and we've exhaused all 8 options.
                 _ => unreachable!(),
@@ -438,8 +438,8 @@ fn rice_decompress<'a>(
             rice_history = 0xffff;
         } else {
             // Avoid += as that has a tendency to underflow
-            rice_history = (rice_history + val * rice_history_mult) -
-                           ((rice_history * rice_history_mult) >> 9);
+            rice_history = (rice_history + val * rice_history_mult)
+                - ((rice_history * rice_history_mult) >> 9);
         }
 
         // There may be a compressed block of zeros. See if there is.
@@ -453,8 +453,7 @@ fn rice_decompress<'a>(
                 debug_assert!(
                     false,
                     "k ({}) greater than rice limit ({}). Unsure how to continue.",
-                    k,
-                    k_max
+                    k, k_max
                 );
             }
 

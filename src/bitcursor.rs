@@ -106,10 +106,8 @@ impl<'a> BitCursor<'a> {
         let (left, right) = self.buf.split_at(bytes_to_read);
         let mut bytes = [0; 4];
         (&mut bytes[0..bytes_to_read]).copy_from_slice(&left);
-        self.current = ((bytes[0] as u32) << 24) |
-                       ((bytes[1] as u32) << 16) |
-                       ((bytes[2] as u32) << 8) |
-                       bytes[3] as u32;
+        self.current = ((bytes[0] as u32) << 24) | ((bytes[1] as u32) << 16)
+            | ((bytes[2] as u32) << 8) | bytes[3] as u32;
         self.buf = right;
         self.current_len = bytes_to_read as u8 * 8;
         self.current_pos = 0;
