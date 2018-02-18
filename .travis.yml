@@ -6,10 +6,13 @@ rust:
   - stable
   - 1.20.0
 script:
-  - cargo test --all-features --verbose
-  - cargo test --release --all-features --verbose
+  - cargo test --no-default-features
+  - cargo test --no-default-features --features caf
+  - cargo test --no-default-features --features mp4
+  - cargo test --all-features
+  - cargo test --release --all-features
 before_deploy:
-  - cargo doc --all-features --no-deps --verbose
+  - cargo doc --all-features --no-deps
 deploy:
   provider: pages
   skip_cleanup: true
