@@ -1,10 +1,10 @@
 [package]
 name = "alac"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Edward Barnard <eabarnard@gmail.com>"]
 description = "An ALAC decoder in Rust."
 readme = "README.md"
-documentation = "https://docs.rs/alac/0.4.2"
+documentation = "https://docs.rs/alac/0.5.0"
 repository = "https://github.com/ebarnard/alac.rs"
 keywords = ["decoder", "audio", "mp4", "m4a", "caf"]
 license = "MIT/Apache-2.0"
