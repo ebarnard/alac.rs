@@ -91,7 +91,7 @@ impl StreamInfo {
             return Err(invalid_data("magic cookie is not the correct length"));
         }
 
-        Ok(StreamInfo {
+        StreamInfo {
             frame_length: read_be_u32(&cookie[0..4]),
             compatible_version: cookie[4],
             bit_depth: cookie[5],
@@ -103,7 +103,7 @@ impl StreamInfo {
             max_frame_bytes: read_be_u32(&cookie[12..16]),
             avg_bit_rate: read_be_u32(&cookie[16..20]),
             sample_rate: read_be_u32(&cookie[20..24]),
-        })
+        }.validate()
     }
 
     /// Creates a `StreamInfo` from SDP format specific parameters, i.e. the `fmtp` attribute.
@@ -118,7 +118,7 @@ impl StreamInfo {
 
         let mut params = params.split_whitespace();
 
-        let config = StreamInfo {
+        let info = StreamInfo {
             frame_length: parse(params.next())?,
             compatible_version: parse(params.next())?,
             bit_depth: parse(params.next())?,
@@ -137,7 +137,7 @@ impl StreamInfo {
             return Err(invalid_data("too many sdp format parameters"));
         }
 
-        Ok(config)
+        info.validate()
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -158,6 +158,17 @@ impl StreamInfo {
 
     pub fn max_samples_per_packet(&self) -> u32 {
         self.frame_length * self.num_channels as u32
+    }
+
+    fn validate(self) -> Result<StreamInfo, InvalidData> {
+        if self
+            .frame_length
+            .checked_mul(self.num_channels as u32)
+            .is_none()
+        {
+            return Err(invalid_data("overflow calculating max_samples_per_packet"));
+        }
+        Ok(self)
     }
 }
 
