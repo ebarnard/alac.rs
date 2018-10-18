@@ -364,8 +364,12 @@ fn decode_rice_symbol<'a>(
     //
     // S = Q × M + R where M = 2^K
 
-    // K cannot be zero as a modulus is 2^K - 1 is used instead of 2^K.
-    debug_assert!(k != 0);
+    // K logically cannot be zero as a modulus of 2^K - 1 is used instead of 2^K. This is ensured
+    // in `rice_decompress`.
+    debug_assert!(k > 0);
+
+    // K cannot be greater than 23 from `rice_decompress`.
+    debug_assert!(k <= 23);
 
     let k = k as usize;
 
@@ -398,8 +402,9 @@ fn decode_rice_symbol<'a>(
         r = (r << 1) + extra_bit - 1;
     }
 
-    // Due to the issue mentioned in rice_decompress we use a parameter for m
-    // rather than calculating it here (e.g. let mut s = (q << k) - q);
+    // Due to the issue mentioned in rice_decompress we use a parameter for M
+    // rather than calculating it here (e.g. let mut s = (q << k) - q).
+    // M is still at most 2^K - 1 so this cannot overflow.
     let s = q * m + r;
 
     Ok(s)
@@ -424,6 +429,7 @@ fn rice_decompress<'a>(
 
     let mut i = 0;
     while i < buf.len() {
+        // `k` has a minimum value of 1 and a maximum of 23.
         let k = log_2((rice_history >> 9) + 3);
         let k = min(k as u8, k_max);
         // See below for info on the m thing
@@ -501,15 +507,19 @@ fn rice_decompress<'a>(
 
 #[inline(always)]
 fn sign_extend(val: i32, bits: u8) -> i32 {
+    debug_assert!(bits <= 32);
+
     let shift = 32 - bits;
     (val << shift) >> shift
 }
 
 fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
+    debug_assert!(bps <= 32);
+
     // When lpc_order is 31 samples are encoded using differential coding. Samples values are the
     // sum of the previous and the difference between the previous and current sample.
     for i in 1..buf.len() {
-        buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
+        buf[i] = sign_extend(buf[i].wrapping_add(buf[i - 1]), bps);
     }
 }
 
@@ -590,15 +600,15 @@ fn lpc_predict(
 fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
     debug_assert_eq!(buf[0].len(), buf[1].len());
 
-    let mix_res = mix_res as i32;
     let num_samples = min(buf[0].len(), buf[1].len());
 
     for i in 0..num_samples {
         let u = buf[0][i];
         let v = buf[1][i];
 
-        let r = u - ((v * mix_res) >> mix_bits);
-        let l = r + v;
+        // `mix_bits` can be 0..255 and is never further validated in the reference decoder.
+        let r = u.wrapping_sub(v.wrapping_mul(mix_res as i32).wrapping_shr(mix_bits as u32));
+        let l = r.wrapping_add(v);
 
         buf[0][i] = l;
         buf[1][i] = r;
@@ -612,6 +622,7 @@ fn append_extra_bits<'a>(
     sample_shift: u8,
 ) -> Result<(), InvalidData> {
     debug_assert_eq!(buf[0].len(), buf[1].len());
+    debug_assert!(sample_shift <= 16);
 
     let channels = min(channels as usize, buf.len());
     let num_samples = min(buf[0].len(), buf[1].len());
