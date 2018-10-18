@@ -303,15 +303,16 @@ fn decode_audio_element<'a, S: Sample>(
             if lpc_mode[i as usize] == 15 {
                 // the special "numActive == 31" mode can be done in-place
                 lpc_predict_order_31(mix_buf[i], chan_bits);
-            } else if lpc_mode[i as usize] > 0 {
-                return Err(invalid_data("invalid lpc mode"));
+            } else if lpc_mode[i as usize] == 0 {
+                if lpc_order[i] == 31 {
+                    return Err(invalid_data("lpc_mode must be 15 if lpc_order is 31"));
+                }
+
+                let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
+                lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i])?;
+            } else {
+                return Err(invalid_data("lpc_mode must be 0 or 15"));
             }
-
-            // We have a seperate function for this
-            assert!(lpc_order[i] != 31);
-
-            let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
-            lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i])?;
         }
 
         if element_channels == 2 && mix_res != 0 {
