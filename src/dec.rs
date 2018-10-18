@@ -160,7 +160,9 @@ impl Decoder {
                     // - plus this weird -1 thing I still don't fully understand
                     let mut skip_bytes = reader.read_u8(4)? as usize;
                     if skip_bytes == 15 {
-                        skip_bytes += reader.read_u8(8)? as usize - 1;
+                        // Use the below instead of `skip_bytes += reader.read_u8(8)? as usize - 1`
+                        // to avoid integer underflow.
+                        skip_bytes = 14 + reader.read_u8(8)? as usize;
                     }
 
                     reader.skip(skip_bytes * 8)?;
