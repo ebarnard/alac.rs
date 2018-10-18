@@ -1,7 +1,7 @@
 use std::cmp::min;
 
-use {invalid_data, InvalidData, StreamInfo};
 use bitcursor::BitCursor;
+use {invalid_data, InvalidData, StreamInfo};
 
 /// A type that can be used to represent audio samples.
 pub trait Sample: Copy + private::Sealed {
@@ -160,7 +160,7 @@ impl Decoder {
                     // - plus this weird -1 thing I still don't fully understand
                     let mut skip_bytes = reader.read_u8(4)? as usize;
                     if skip_bytes == 15 {
-                        skip_bytes += reader.read_u8(8)? as usize - 1
+                        skip_bytes += reader.read_u8(8)? as usize - 1;
                     }
 
                     reader.skip(skip_bytes * 8)?;

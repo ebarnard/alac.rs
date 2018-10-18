@@ -15,7 +15,7 @@ fn main() {
     let out_comp_bin = include_bytes!("data/out_16_bit.bin");
     let mut out_comp = vec![0i16; 8192];
     for i in 0..out_comp.len() {
-        out_comp[i] = ((out_comp_bin[i * 2] as i16)) + ((out_comp_bin[i * 2 + 1] as i16) << 8);
+        out_comp[i] = (out_comp_bin[i * 2] as i16) + ((out_comp_bin[i * 2 + 1] as i16) << 8);
     }
 
     assert_eq!(out, out_comp);

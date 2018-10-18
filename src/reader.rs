@@ -128,7 +128,8 @@ impl<R: Read + Seek> Reader<R> {
         }
 
         // Decode the next packet
-        let samples = self.decoder
+        let samples = self
+            .decoder
             .decode_packet(&self.packet_buf, out)
             .map_err(|err| ReadError::Decoder(err))?;
 

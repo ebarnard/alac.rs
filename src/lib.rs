@@ -1,7 +1,7 @@
 mod bitcursor;
-mod dec;
 #[cfg(feature = "caf")]
 mod caf;
+mod dec;
 #[cfg(feature = "mp4")]
 mod mp4;
 #[cfg(any(feature = "caf", feature = "mp4"))]

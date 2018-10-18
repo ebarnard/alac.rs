@@ -1,7 +1,7 @@
 extern crate caf;
 
-use self::caf::{CafError, ChunkType, FormatType};
 use self::caf::chunks::CafChunk;
+use self::caf::{CafError, ChunkType, FormatType};
 use std::io::{ErrorKind, Read, Seek};
 use std::mem;
 
@@ -40,8 +40,7 @@ impl<R: Read + Seek> CafPacketReader<R> {
             .filter_map(|c| match c {
                 CafChunk::MagicCookie(d) => Some(d),
                 _ => None,
-            })
-            .next()
+            }).next()
             .ok_or(caf_error("missing magic cookie"))?;
         Ok((CafPacketReader { reader }, magic_cookie))
     }

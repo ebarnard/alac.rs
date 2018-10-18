@@ -92,8 +92,7 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
                     first_chunk,
                     samples_per_chunk: s.samples_per_chunk,
                 })
-            })
-            .collect();
+            }).collect();
 
         Ok((
             Mp4PacketReader {

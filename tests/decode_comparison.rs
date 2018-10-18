@@ -8,18 +8,16 @@ use std::fs::File;
 
 static ROOT: &'static str = "tests/data/decode_comparison";
 
-static COMPARE_MP4_I16: &'static [(&'static str, &'static str)] = &[
-    ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a"),
-];
+static COMPARE_MP4_I16: &'static [(&'static str, &'static str)] =
+    &[("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a")];
 
 static COMPARE_MP4_I32: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a"),
     ("synth_44100_24_bit.wav", "synth_44100_24_bit_afconvert.m4a"),
 ];
 
-static COMPARE_CAF_I16: &'static [(&'static str, &'static str)] = &[
-    ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf"),
-];
+static COMPARE_CAF_I16: &'static [(&'static str, &'static str)] =
+    &[("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf")];
 
 static COMPARE_CAF_I32: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf"),
@@ -79,8 +77,7 @@ fn compare<S: Sample>(root: &str, wav: &str, alac: &str) {
     }
 }
 
-trait Sample
-    : alac::Sample + hound::Sample + Clone + Copy + fmt::Display + PartialEq {
+trait Sample: alac::Sample + hound::Sample + Clone + Copy + fmt::Display + PartialEq {
     fn zero() -> Self;
     /// Hound samples are right aligned and need to be shifted to compare with alac samples if the
     /// stream bit depth is lower than the sample type bit depth.
