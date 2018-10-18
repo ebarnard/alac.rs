@@ -5,6 +5,11 @@ version = "0.0.1"
 authors = ["Automatically generated"]
 publish = false
 
+[profile.release]
+debug-assertions = true
+codegen-units = 1
+overflow-checks = true
+
 [package.metadata]
 cargo-fuzz = true
 
