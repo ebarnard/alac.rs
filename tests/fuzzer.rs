@@ -9,6 +9,12 @@ fn ID_FIL_skip_bytes_underflow() {
     assert_decode_err(COOKIE_A, data);
 }
 
+#[test]
+fn lpc_quant_zero() {
+    let data = b"\x00\x00\x10\x00\x00\x00\x05\x00\x00\x00\x00\x00\x00\x00";
+    assert_decode_err(COOKIE_A, data);
+}
+
 fn assert_decode_err(cookie: &[u8], data: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);

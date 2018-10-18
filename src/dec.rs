@@ -293,7 +293,7 @@ fn decode_audio_element<'a, S: Sample>(
             assert!(lpc_order[i] != 31);
 
             let lpc_coefs = &mut lpc_coefs[i][..lpc_order[i] as usize];
-            lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i]);
+            lpc_predict(mix_buf[i], chan_bits, lpc_coefs, lpc_quant[i])?;
         }
 
         if element_channels == 2 && mix_res != 0 {
@@ -508,7 +508,17 @@ fn lpc_predict_order_31(buf: &mut [i32], bps: u8) {
     }
 }
 
-fn lpc_predict(buf: &mut [i32], bps: u8, lpc_coefs: &mut [i16], lpc_quant: u32) {
+fn lpc_predict(
+    buf: &mut [i32],
+    bps: u8,
+    lpc_coefs: &mut [i16],
+    lpc_quant: u32,
+) -> Result<(), InvalidData> {
+    // Avoid integer underflow by checking lpc_quant is at least one.
+    if lpc_quant <= 0 {
+        return Err(invalid_data("lpc_quant must be at least one"));
+    }
+
     let lpc_order = lpc_coefs.len();
 
     // Prediction needs lpc_order + 1 previous decoded samples.
@@ -561,6 +571,8 @@ fn lpc_predict(buf: &mut [i32], bps: u8, lpc_coefs: &mut [i16], lpc_quant: u32) 
             }
         }
     }
+
+    Ok(())
 }
 
 fn unmix_stereo(buf: &mut [&mut [i32]; 2], mix_bits: u8, mix_res: i8) {
