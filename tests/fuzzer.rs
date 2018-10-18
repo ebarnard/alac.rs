@@ -27,6 +27,12 @@ fn negative_bit_depth() {
     assert_decode_err(COOKIE_A, data);
 }
 
+#[test]
+fn bitcursor_read_u32_shift_overflow() {
+    let data = b"\x00\x00\x10\x00\x00\x00\x09\xb1\x00\x15\x00\x02\xff\x00\x00\x09\x00\x00\x00\xff\x00\x00\xc1\x01\x00\x00\x00\x00\x00\x00\x02\x02\x10\xc1\xff\x0f\x00\x2d\x00\x02\x0a";
+    assert_decode_err(COOKIE_A, data);
+}
+
 fn assert_decode_err(cookie: &[u8], data: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);

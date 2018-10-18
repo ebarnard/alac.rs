@@ -41,6 +41,12 @@ impl From<bitcursor::NotEnoughData> for InvalidData {
     }
 }
 
+impl From<bitcursor::BufferTooLong> for InvalidData {
+    fn from(_: bitcursor::BufferTooLong) -> InvalidData {
+        invalid_data("packet is too long")
+    }
+}
+
 fn invalid_data(message: &'static str) -> InvalidData {
     InvalidData { message }
 }

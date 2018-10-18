@@ -87,7 +87,7 @@ impl Decoder {
         packet: &[u8],
         out: &'a mut [S],
     ) -> Result<&'a [S], InvalidData> {
-        let mut reader = BitCursor::new(packet);
+        let mut reader = BitCursor::new(packet)?;
 
         let mut channel_index = 0;
         let mut frame_samples = None;
