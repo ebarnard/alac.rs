@@ -239,11 +239,15 @@ fn decode_audio_element<'a, S: Sample>(
         let (buf_u, buf_v) = this.buf.split_at_mut(this.config.frame_length as usize);
         let mut mix_buf = [&mut buf_u[..num_samples], &mut buf_v[..num_samples]];
 
-        let chan_bits = this.config.bit_depth - sample_shift + element_channels - 1;
+        let chan_bits =
+            this.config.bit_depth as i16 - sample_shift as i16 + element_channels as i16 - 1;
         if chan_bits > 32 {
             // unimplemented - could in theory be 33
             return Err(invalid_data("channel bit depth cannot be greater than 32"));
+        } else if chan_bits < 1 {
+            return Err(invalid_data("channel bit depth must be greater than zero"));
         }
+        let chan_bits = chan_bits as u8;
 
         // compressed frame, read rest of parameters
         let mix_bits: u8 = reader.read_u8(8)?;
@@ -269,8 +273,17 @@ fn decode_audio_element<'a, S: Sample>(
 
         let extra_bits_reader = if sample_shift != 0 {
             let extra_bits_reader = reader.clone();
-            reader.skip((sample_shift as usize) * num_samples * element_channels as usize)?;
-            Some(extra_bits_reader)
+            let skip_len = (sample_shift as usize)
+                .checked_mul(num_samples)
+                .and_then(|v| v.checked_mul(element_channels as usize));
+            if let Some(skip_len) = skip_len {
+                reader.skip(skip_len)?;
+                Some(extra_bits_reader)
+            } else {
+                return Err(invalid_data(
+                    "integer overflow when calculating extra_bits length",
+                ));
+            }
         } else {
             None
         };
