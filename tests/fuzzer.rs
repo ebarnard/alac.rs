@@ -15,6 +15,12 @@ fn lpc_quant_zero() {
     assert_decode_err(COOKIE_A, data);
 }
 
+#[test]
+fn lpc_predict_lpc_coefs_overflow() {
+    let data = b"\x00\x00\x10\x00\x00\x00\x09\x98\x00\x15\x05\x00\x00\x00\x00\x00\x20";
+    assert_decode_err(COOKIE_A, data);
+}
+
 fn assert_decode_err(cookie: &[u8], data: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);
