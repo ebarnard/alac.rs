@@ -1,3 +1,8 @@
+// Apple's reference decoder rarely checks for integer overflow and is written in C++ where signed
+// overflow is undefined. In this implementation we try to return errors for obviously incorrect
+// overflow but in tight loops, performance critical code, and where overflow is not necessarily
+// incorrect wrapping arithmetic is used.
+
 use std::cmp::min;
 
 use bitcursor::BitCursor;
@@ -521,9 +526,13 @@ fn lpc_predict(
 
     let lpc_order = lpc_coefs.len();
 
+    debug_assert!(bps <= 32);
+    debug_assert!(lpc_order < 32);
+    debug_assert!(lpc_quant < 16);
+
     // Prediction needs lpc_order + 1 previous decoded samples.
     for i in 1..min(lpc_order + 1, buf.len()) {
-        buf[i] = sign_extend(buf[i] + buf[i - 1], bps);
+        buf[i] = sign_extend(buf[i].wrapping_add(buf[i - 1]), bps);
     }
 
     for i in (lpc_order + 1)..buf.len() {
@@ -535,18 +544,19 @@ fn lpc_predict(
         let buf = &mut buf[i - lpc_order..i + 1];
 
         // Predict the next sample using linear predictive coding.
-        let mut predicted = 0;
+        let mut predicted: i32 = 0;
         for (x, coef) in buf.iter().zip(lpc_coefs.iter()) {
-            predicted += (x - mean) * (*coef as i32);
+            let term = x.wrapping_sub(mean).wrapping_mul(*coef as i32);
+            predicted = predicted.wrapping_add(term);
         }
 
         // Round up to and then truncate by lpc_quant bits.
         // 1 << (lpc_quant - 1) sets the (lpc_quant - 1)'th bit.
-        let predicted = (predicted + (1 << (lpc_quant - 1))) >> lpc_quant;
+        let predicted = (predicted.wrapping_add(1 << (lpc_quant - 1))) >> lpc_quant;
 
         // Store the sample for output and to be used in the next prediction.
         let prediction_error = buf[lpc_order];
-        let sample = predicted + mean + prediction_error;
+        let sample = predicted.wrapping_add(mean).wrapping_add(prediction_error);
         buf[lpc_order] = sign_extend(sample, bps);
 
         if prediction_error != 0 {
@@ -559,11 +569,13 @@ fn lpc_predict(
             let mut prediction_error = error_sign * prediction_error;
 
             for j in 0..lpc_order {
-                let predicted = buf[j] - mean;
+                let predicted = buf[j].wrapping_sub(mean);
                 let sign = predicted.signum() * error_sign;
-                lpc_coefs[j] += sign as i16;
+                lpc_coefs[j] = lpc_coefs[j].wrapping_add(sign as i16);
                 // Update the prediction error now we have changed a coefficient.
-                prediction_error -= error_sign * (predicted * sign >> lpc_quant) * (j as i32 + 1);
+                let error_update =
+                    error_sign * (predicted * sign >> lpc_quant).wrapping_mul(j as i32 + 1);
+                prediction_error = prediction_error.wrapping_sub(error_update);
                 // Stop updating coefficients if the prediction error changes sign.
                 if prediction_error <= 0 {
                     break;
