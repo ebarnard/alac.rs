@@ -25,3 +25,7 @@ members = ["."]
 [[bin]]
 name = "decoder"
 path = "fuzz_targets/decoder.rs"
+
+[[bin]]
+name = "decoder_and_stream_info"
+path = "fuzz_targets/decoder_and_stream_info.rs"
