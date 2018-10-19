@@ -166,7 +166,12 @@ impl StreamInfo {
         self.frame_length * self.num_channels as u32
     }
 
+    // TODO: Consider moving this validation to Decoder::new() on next major version bump
     fn validate(self) -> Result<StreamInfo, InvalidData> {
+        if self.num_channels == 0 {
+            return Err(invalid_data("stream must contain one or more channels"));
+        }
+
         if self
             .frame_length
             .checked_mul(self.num_channels as u32)
@@ -174,6 +179,11 @@ impl StreamInfo {
         {
             return Err(invalid_data("overflow calculating max_samples_per_packet"));
         }
+
+        if self.bit_depth == 0 {
+            return Err(invalid_data("bit depth must be one or greater"));
+        }
+
         Ok(self)
     }
 }
@@ -212,6 +222,18 @@ mod tests {
         };
 
         assert_eq!(cookie, comparison);
+    }
+
+    #[test]
+    fn cookie_must_have_one_or_more_channels() {
+        let params = "4096  0   16  40  10  14  0   255 0   0   44100";
+        assert!(StreamInfo::from_sdp_format_parameters(params).is_err());
+    }
+
+    #[test]
+    fn cookie_must_have_nonzero_bit_depth() {
+        let params = "4096  0   0  40  10  14  2   255 0   0   44100";
+        assert!(StreamInfo::from_sdp_format_parameters(params).is_err());
     }
 
     #[test]
