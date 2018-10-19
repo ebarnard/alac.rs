@@ -33,9 +33,20 @@ fn bitcursor_read_u32_shift_overflow() {
     assert_decode_err(COOKIE_A, data);
 }
 
-fn assert_decode_err(cookie: &[u8], data: &[u8]) {
+#[test]
+fn stream_info_zero_bit_depth() {
+    let data = b"\x00\x00\x3d\x00\x00\x00\x00\x00\x01\x01\xa0\x00\x37\x31\x00\x15\x34\xde\xa6\x00\x31\x00\x00\x00\x00\x00\x02\x00";
+    assert_stream_info_decode_error(data);
+}
+
+fn assert_decode_err(cookie: &[u8], packet: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);
     let mut out = vec![0; decoder.stream_info().max_samples_per_packet() as usize];
-    assert!(decoder.decode_packet(data, &mut out).is_err());
+    assert!(decoder.decode_packet(packet, &mut out).is_err());
+}
+
+fn assert_stream_info_decode_error(data: &[u8]) {
+    let cookie = &data[..24];
+    assert!(alac::StreamInfo::from_cookie(cookie).is_err());
 }
