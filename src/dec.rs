@@ -448,16 +448,16 @@ fn rice_decompress<'a>(
         let k = min(k as u8, k_max);
         // See below for info on the m thing
         let m = (1 << k) - 1;
+
+        // The least significant bit of `val` is the sign bit. `val` is negative if it is set.
         let val = decode_rice_symbol(reader, m, k, bps)?;
-        // The least significant bit of val is the sign bit - the plus is weird tho
-        // if val and sgn mod = 0 then nothing happens
-        // if one is 1 the lsb = 1
-        // val & 1 = 1 => val is all 1s => flip all the bits
-        // if they are both 1 then val_eff += 2
-        // val & 1 = 0 => nothing happens...?
-        let val = val + sign_modifier;
+
+        // It is not clear if `wrapping_add` is appropriate here as the Apple reference decoder
+        // uses signed addition for which overflow is undefined in C.
+        let val = val.wrapping_add(sign_modifier);
         sign_modifier = 0;
-        // As lsb sign bit right shift by 1
+
+        // Convert `val` into a two's complement integer.
         buf[i] = ((val >> 1) as i32) ^ -((val & 1) as i32);
 
         // Update the history value

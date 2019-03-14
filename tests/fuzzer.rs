@@ -51,6 +51,12 @@ fn rice_limit_is_zero() {
     assert_stream_info_decode_error(data);
 }
 
+#[test]
+fn rice_decompress_val_sign_modifier_overflow() {
+    let data = b"\x00\x00\x02\x00\x07\x20\x07\x47\x07\x07\x07\x07\x07\x07\x47\x1b\x07\x07\x41\x07\x07\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\x00\x28\xaa\xaa\xaa\xaa\xaa";
+    assert_decode_and_stream_info_err(data);
+}
+
 fn assert_decode_err(cookie: &[u8], packet: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);
@@ -61,4 +67,12 @@ fn assert_decode_err(cookie: &[u8], packet: &[u8]) {
 fn assert_stream_info_decode_error(data: &[u8]) {
     let cookie = &data[..24];
     assert!(alac::StreamInfo::from_cookie(cookie).is_err());
+}
+
+fn assert_decode_and_stream_info_err(data: &[u8]) {
+    let (cookie, packet) = data.split_at(24);
+    let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
+    let mut decoder = alac::Decoder::new(stream_info);
+    let mut out = vec![0; decoder.stream_info().max_samples_per_packet() as usize];
+    assert!(decoder.decode_packet(packet, &mut out).is_err());
 }
