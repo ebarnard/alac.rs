@@ -45,6 +45,12 @@ fn rice_limit_too_large() {
     assert_stream_info_decode_error(data);
 }
 
+#[test]
+fn rice_limit_is_zero() {
+    let data = b"\x00\x00\x00\x2c\x00\x02\x00\x16\x00\x16\x00\x00\x16\x00\x00\x00\x31\x31\x00\x02\x00\x00\x33\x00\x00\x00\x00\x00\x00\x16\x00\x00";
+    assert_stream_info_decode_error(data);
+}
+
 fn assert_decode_err(cookie: &[u8], packet: &[u8]) {
     let stream_info = alac::StreamInfo::from_cookie(cookie).expect("error reading cookie");
     let mut decoder = alac::Decoder::new(stream_info);

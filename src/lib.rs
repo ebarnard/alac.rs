@@ -185,6 +185,10 @@ impl StreamInfo {
             return Err(invalid_data("bit depth must be one or greater"));
         }
 
+        if self.kb <= 0 {
+            return Err(invalid_data("rice limit must be greater than 0"));
+        }
+
         if self.kb >= 32 {
             return Err(invalid_data("rice limit must be less than 32"));
         }
