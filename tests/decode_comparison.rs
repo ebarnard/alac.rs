@@ -8,17 +8,21 @@ use std::fs::File;
 
 static ROOT: &'static str = "tests/data/decode_comparison";
 
+#[cfg(feature = "mp4")]
 static COMPARE_MP4_I16: &'static [(&'static str, &'static str)] =
     &[("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a")];
 
+#[cfg(feature = "mp4")]
 static COMPARE_MP4_I32: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.m4a"),
     ("synth_44100_24_bit.wav", "synth_44100_24_bit_afconvert.m4a"),
 ];
 
+#[cfg(feature = "caf")]
 static COMPARE_CAF_I16: &'static [(&'static str, &'static str)] =
     &[("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf")];
 
+#[cfg(feature = "caf")]
 static COMPARE_CAF_I32: &'static [(&'static str, &'static str)] = &[
     ("synth_44100_16_bit.wav", "synth_44100_16_bit_afconvert.caf"),
     ("synth_44100_24_bit.wav", "synth_44100_24_bit_afconvert.caf"),
