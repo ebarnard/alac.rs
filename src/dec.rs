@@ -472,26 +472,21 @@ fn rice_decompress<'a>(
         // There may be a compressed block of zeros. See if there is.
         if (rice_history < 128) && (i + 1 < buf.len()) {
             // calculate rice param and decode block size
-            let k = rice_history.leading_zeros() - 24 + ((rice_history + 16) >> 6);
-            // The maximum value k above can take is 7. The rice limit seems to always be higher
-            // than this. This is called infrequently enough that the if statement below should
-            // have a minimal effect on performance.
-            if k as u8 > k_max {
-                debug_assert!(
-                    false,
-                    "k ({}) greater than rice limit ({}). Unsure how to continue.",
-                    k, k_max
-                );
-            }
 
-            // Apple version
-            let k = k as u8;
-            let wb_local = (1 << k_max) - 1;
-            let m = ((1 << k) - 1) & wb_local;
-            // FFMPEG version
+            // There is a difference between the Apple reference and FFmpeg encoder and decoder in
+            // the calculation of `k`. Interestingly, `m` is calculated the same in both
+            // implementations as `let m = _ & wb` has the result as using `k` from
+            // `let k = min(k, k_max)`. We choose to use the Apple reference decoder calculation.
+
+            // Apple reference version:
+            let k = (rice_history.leading_zeros() - 24 + ((rice_history + 16) >> 6)) as u8;
+            let wb = (1 << config.kb) - 1;
+            let m = ((1 << k) - 1) & wb;
+
+            // FFmpeg version:
+            // let k = 7 - log_2(rice_history) + ((rice_history + 16) >> 6);
             // let k = min(k as u8, k_max);
-            // let mz = ((1 << k) - 1);
-            // End versions
+            // let m = ((1 << k) - 1);
 
             let zero_block_len = decode_rice_symbol(reader, m, k, 16)? as usize;
 
