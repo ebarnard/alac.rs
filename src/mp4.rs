@@ -92,7 +92,8 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
                     first_chunk,
                     samples_per_chunk: s.samples_per_chunk,
                 })
-            }).collect();
+            })
+            .collect();
 
         Ok((
             Mp4PacketReader {
@@ -114,7 +115,8 @@ impl<R: Read + Seek> Mp4PacketReader<R> {
         }
 
         // Find the current sample to chunk mapping
-        let sample_to_chunk_idx = self.sample_to_chunk
+        let sample_to_chunk_idx = self
+            .sample_to_chunk
             .binary_search_by_key(&self.sample_idx, |s| s.first_sample)
             // If we are past s.first_sample we want the index of s
             .unwrap_or_else(|i| i - 1);

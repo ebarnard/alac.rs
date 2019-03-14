@@ -109,7 +109,8 @@ impl StreamInfo {
             max_frame_bytes: read_be_u32(&cookie[12..16]),
             avg_bit_rate: read_be_u32(&cookie[16..20]),
             sample_rate: read_be_u32(&cookie[20..24]),
-        }.validate()
+        }
+        .validate()
     }
 
     /// Creates a `StreamInfo` from SDP format specific parameters, i.e. the `fmtp` attribute.
